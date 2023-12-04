@@ -1,0 +1,6 @@
+[submodule "abetam"]
+	path = abetam
+	url = https://gitlab.ruhr-uni-bochum.de/ee/abetam.git
+[submodule "copper"]
+	path = copper
+	url = https://gitlab.com/McPherson/copper.git
