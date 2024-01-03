@@ -86,26 +86,29 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame):
     return copper_input
 
 
-def get_copper_el_prices(config):
-    copper_result_dir = "copper/results/LastRun"
+def get_copper_duals(copper_result_dir="copper/results/LastRun"):
     duals = pd.read_csv(f"{copper_result_dir}/duals.csv").set_index(
         ["year", "hour", "node"]
     )
-
     duals = add_province(duals)
+    return duals
 
-    run_day_key = "run_days_test"
+
+def get_copper_el_prices(config, copper_result_dir="copper/results/LastRun"):
+    duals = get_copper_duals(copper_result_dir)
+
+    run_day_key = "run_days"
+    is_test_run = config["Simulation_Settings"]["test"]
+    if is_test_run:
+        run_day_key += "_test"
     n_days = len(config["Simulation_Settings"][run_day_key])
     print(
         f"n_days: {n_days}, using {run_day_key}: {config['Simulation_Settings'][run_day_key]}"
     )
+    prices = duals.set_index(["year","hour","province"])[["dual_price"]]* -n_days / 365
 
-    mean_electricity_price = (
-        duals.groupby(["year", "province"])["dual_price"].mean() * -n_days / 365
-    )
-
-    mean_electricity_price /= 10  # $/MWh -> c/kWh
-    return mean_electricity_price
+    prices /= 10  # $/MWh -> c/kWh
+    return prices
 
 
 def add_province(df):
@@ -130,9 +133,9 @@ def set_batch_params_to_copper_config(batch_parameters, config):
 if __name__ == "__main__":
     # which model to run first?
     batch_parameters = {
-        "N": [50],
+        "N": [79],
         "province": ["Ontario"],
-        "random_seed": list(range(42, 44)),
+        "random_seed": list(range(42, 48)),
         "tech_attitude_dist_func": beta_with_mode_at,
         "tech_attitude_dist_params": [best_tech_modes],
         "start_year": 2020,
@@ -143,6 +146,7 @@ if __name__ == "__main__":
     config = toml.load(config_path)
 
     for i in range(5):
+        print(f"Iteration {i}, running ABM...")
         batch_result = BatchResult.from_parameters(
             batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
         )
@@ -161,23 +165,29 @@ if __name__ == "__main__":
         set_batch_params_to_copper_config(batch_parameters, config)
 
         # run copper model for the selected provinces
+        print(f"Iteration {i}, running COPPER...")
         result = sp.run(
             ["python", "COPPER.py"],
             stdout=sp.PIPE,
             stderr=sp.PIPE,
             cwd=copper_dir.as_posix(),
         )
-        print(result.stdout.decode("utf-8"))
-
+        stdout = result.stdout.decode("utf-8")
+        stderr = result.stderr.decode("utf-8")
+        # print(stdout, stderr)
+        if "Traceback" in stderr:
+            print(stderr)
+            raise ChildProcessError("An error has occured during the execution of COPPER.")
         # retrieve copper results...
-        mean_electricity_price = get_copper_el_prices(config)
+        electricity_prices = get_copper_el_prices(config)
+        mean_electricity_prices = electricity_prices.groupby(["year", "province"]).mean()
 
         el_price_copper = (
-            mean_electricity_price.to_frame()
+            mean_electricity_prices
             .reset_index()
             .pivot(index="year", columns="province", values="dual_price")
         )
-
+        print(f"Copper electricity prices:\n{el_price_copper}")
         # ... and merge them with the abm inputs
         el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
         el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
