@@ -12,9 +12,9 @@ copper_dir = Path(root_dir) / "copper"
 sys.path.append(abetam_dir.as_posix())
 
 from abetam.data.canada import Provinces
+from abetam.data.canada.timeseries import demand_projection
 from abetam.batch import BatchResult
 from abetam.components.probability import beta_with_mode_at
-
 
 
 # best peaks for tech attitude distribution
@@ -28,6 +28,7 @@ best_tech_modes = {
 
 
 def add_abm_demand_to_projection(model_demand: pd.DataFrame):
+    model_demand = model_demand.reset_index()
     model_demand["COPPER_colnames"] = (
         model_demand["province"] + "." + model_demand["year"].astype(int).astype(str)
     )
@@ -36,10 +37,8 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame):
     )
     model_demand /= 1000  # kWh -> MWh
 
-    projection_df = pd.read_csv(
-        "data/canada/timeseries/end-use-demand-2023.csv", index_col=0
-    ).query(
-        "Scenario=='Global Net-zero' and Variable=='Electricity'  and Sector!='Total End-Use'"
+    projection_df = demand_projection.query(
+        "Scenario=='Global Net-zero' and Variable=='Electricity' and Sector!='Total End-Use'"
     )
     valid_years = (projection_df["Year"] % 5 == 0) & (projection_df["Year"] > 2019) | (
         projection_df["Year"] == 2021
@@ -87,38 +86,38 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame):
     return copper_input
 
 
-
-
-# which model to run first?
-
-if __name__ == "__main__":
-    
-    os.chdir(abetam_dir)
-    #
-    batch_parameters = {
-        "N": [150],
-        "province": [Provinces.ON],
-        "random_seed": list(range(42, 43)),
-        "tech_attitude_dist_func": [beta_with_mode_at],
-        "tech_attitude_dist_params": [best_tech_modes],
-        "start_year": 2020,
-        "price_weight_mode": 0.875,
-    }
-
-    batch_result = BatchResult.from_parameters(
-        batch_parameters, max_steps=(2050 - 2020) * 4
+def get_copper_el_prices(config):
+    copper_result_dir = "copper/results/LastRun"
+    duals = pd.read_csv(f"{copper_result_dir}/duals.csv").set_index(
+        ["year", "hour", "node"]
     )
 
-    # retrieve abm time series results...
-    demand_df = batch_result.mean_carrier_demand
-    copper_demand = add_abm_demand_to_projection(demand_df)
+    duals = add_province(duals)
 
-    # ... and set them as copper demands
-    copper_demand.to_csv("copper/scenarios/BAU_scenario/demand/user_input_demand.csv")
+    run_day_key = "run_days_test"
+    n_days = len(config["Simulation_Settings"][run_day_key])
+    print(
+        f"n_days: {n_days}, using {run_day_key}: {config['Simulation_Settings'][run_day_key]}"
+    )
 
-    # adapt copper config to the current run
-    config_path = "copper/scenarios/BAU_scenario/config.toml"
-    config = toml.load(config_path)
+    mean_electricity_price = (
+        duals.groupby(["year", "province"])["dual_price"].mean() * -n_days / 365
+    )
+
+    mean_electricity_price /= 10  # $/MWh -> c/kWh
+    return mean_electricity_price
+
+
+def add_province(df):
+    if "province" in df.columns:
+        return df
+    else:
+        df.reset_index(inplace=True)
+        df["province"] = df["node"].str.split(".", expand=True)[0]
+        return df
+
+
+def set_batch_params_to_copper_config(batch_parameters, config):
     config["Simulation_Settings"]["ap"] = batch_parameters["province"]
     config["Simulation_Settings"]["aba"] = [
         ba
@@ -127,12 +126,64 @@ if __name__ == "__main__":
     ]
     toml.dump(config, open(config_path, "w"))
 
-    os.chdir(copper_dir)
-    # run copper model for the selected provinces
-    result = sp.run(
-        ["python", "COPPER.py"], stdout=sp.PIPE, stderr=sp.PIPE, cwd="copper"
-    )
 
-    # TODO retrieve copper results and put them in the ABM folder
+if __name__ == "__main__":
+    # which model to run first?
+    batch_parameters = {
+        "N": [50],
+        "province": ["Ontario"],
+        "random_seed": list(range(42, 44)),
+        "tech_attitude_dist_func": beta_with_mode_at,
+        "tech_attitude_dist_params": [best_tech_modes],
+        "start_year": 2020,
+        "price_weight_mode": 0.875,
+    }
 
+    config_path = "copper/scenarios/BAU_scenario/config.toml"
+    config = toml.load(config_path)
+
+    for i in range(5):
+        batch_result = BatchResult.from_parameters(
+            batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
+        )
+        batch_result.save()
+
+        # retrieve abm time series results...
+        demand_df = batch_result.mean_carrier_demand_df
+        copper_demand = add_abm_demand_to_projection(demand_df)
+
+        # ... and set them as copper demands
+        copper_demand.to_csv(
+            "copper/scenarios/BAU_scenario/demand/user_input_demand.csv"
+        )
+
+        # adapt copper config to the current run
+        set_batch_params_to_copper_config(batch_parameters, config)
+
+        # run copper model for the selected provinces
+        result = sp.run(
+            ["python", "COPPER.py"],
+            stdout=sp.PIPE,
+            stderr=sp.PIPE,
+            cwd=copper_dir.as_posix(),
+        )
+        print(result.stdout.decode("utf-8"))
+
+        # retrieve copper results...
+        mean_electricity_price = get_copper_el_prices(config)
+
+        el_price_copper = (
+            mean_electricity_price.to_frame()
+            .reset_index()
+            .pivot(index="year", columns="province", values="dual_price")
+        )
+
+        # ... and merge them with the abm inputs
+        el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
+        el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
+
+        for year in el_price_copper.index:
+            for prov in el_price_copper.columns:
+                el_prices_df.at[year, prov] = el_price_copper.loc[year, prov]
+        el_prices_df.to_csv(el_price_path)
     pass
