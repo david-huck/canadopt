@@ -29,6 +29,7 @@ best_tech_modes = {
 
 def add_abm_demand_to_projection(model_demand: pd.DataFrame):
     model_demand = model_demand.reset_index()
+    # colnames are integer years represented as string
     model_demand["COPPER_colnames"] = (
         model_demand["province"] + "." + model_demand["year"].astype(int).astype(str)
     )
@@ -43,11 +44,13 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame):
     valid_years = (projection_df["Year"] % 5 == 0) & (projection_df["Year"] > 2019) | (
         projection_df["Year"] == 2021
     )
+    # print(f"valid_years = {projection_df['Year'][valid_years]}")
 
     projection_df = projection_df.loc[valid_years, :]
     projection_df.loc[:, "COPPER_colnames"] = (
-        projection_df["Region"] + "." + projection_df["Year"].astype("str")
+        projection_df["Region"] + "." + projection_df["Year"].astype(str)
     )
+    # print(f"{projection_df.sum()=}")
 
     def agg_sectors(sector):
         if sector == "Residential":
@@ -80,9 +83,11 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame):
     #                   J->Wh, P -> M
     rest_demand_df *= (1 / 3600) * 1e9
 
+    # print(f"{model_demand=}")
     common_cols = set(rest_demand_df.columns).intersection(model_demand.columns)
     # set(rest_demand_df.columns).difference(model_demand.columns)
     copper_input = rest_demand_df.loc[:, list(common_cols)] + model_demand
+    # print(f"{copper_input=}")
     return copper_input
 
 
@@ -134,7 +139,7 @@ if __name__ == "__main__":
     # which model to run first?
     batch_parameters = {
         "N": [79],
-        "province": ["Ontario"],
+        "province": ["Ontario", "Quebec", "Manitoba"],
         "random_seed": list(range(42, 48)),
         "tech_attitude_dist_func": beta_with_mode_at,
         "tech_attitude_dist_params": [best_tech_modes],
@@ -145,7 +150,7 @@ if __name__ == "__main__":
     config_path = "copper/scenarios/BAU_scenario/config.toml"
     config = toml.load(config_path)
 
-    for i in range(5):
+    for i in range(3):
         print(f"Iteration {i}, running ABM...")
         batch_result = BatchResult.from_parameters(
             batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
@@ -175,7 +180,7 @@ if __name__ == "__main__":
         stdout = result.stdout.decode("utf-8")
         stderr = result.stderr.decode("utf-8")
         # print(stdout, stderr)
-        if "Traceback" in stderr:
+        if "Traceback" in stderr or "Error" in stderr:
             print(stderr)
             raise ChildProcessError("An error has occured during the execution of COPPER.")
         # retrieve copper results...
