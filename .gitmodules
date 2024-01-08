@@ -1,6 +1,6 @@
 [submodule "abetam"]
 	path = abetam
-	url = https://gitlab.ruhr-uni-bochum.de/ee/abetam.git
+	url = https://github.com/david-huck/abetam
 [submodule "copper"]
 	path = copper
 	url = https://gitlab.com/McPherson/copper.git
