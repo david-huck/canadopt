@@ -139,7 +139,7 @@ if __name__ == "__main__":
     # which model to run first?
     batch_parameters = {
         "N": [79],
-        "province": ["Ontario", "Quebec", "Manitoba"],
+        "province": ["Ontario",],
         "random_seed": list(range(42, 48)),
         "tech_attitude_dist_func": beta_with_mode_at,
         "tech_attitude_dist_params": [best_tech_modes],
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     config_path = "copper/scenarios/BAU_scenario/config.toml"
     config = toml.load(config_path)
 
-    for i in range(3):
+    for i in range(2):
         print(f"Iteration {i}, running ABM...")
         batch_result = BatchResult.from_parameters(
             batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
