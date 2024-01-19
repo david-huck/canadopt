@@ -99,9 +99,33 @@ def get_copper_duals(copper_result_dir="copper/results/LastRun"):
     return duals
 
 
+def multi_index_copper_demand(copper_demand):
+    """transforms the copper demand dataframe from a wide to a long format
+
+    Args:
+        copper_demand (pd.DataFrame): copper demand in wide format where column
+    names are `PROVINCE.YEAR`
+
+    Returns:
+        copper_midx_demand: copper demand in long format with `hour`, `year`
+        and `province` as indices
+    """
+
+    copper_demand_bidx = copper_demand.melt(ignore_index=False)
+    copper_demand_bidx.loc[:, ["province", "year"]] = (
+        copper_demand_bidx["variable"].str.split(".", expand=True).values
+    )
+    copper_demand_bidx["year"] = copper_demand_bidx["year"].astype(int)
+    copper_demand_bidx = (
+        copper_demand_bidx.reset_index(names=["hour"])
+        .drop("variable", axis=1)
+        .set_index(["year", "hour", "province"])
+    )
+    return copper_demand_bidx
+
+
 def get_copper_el_prices(config, copper_result_dir="copper/results/LastRun"):
     duals = get_copper_duals(copper_result_dir)
-
     run_day_key = "run_days"
     is_test_run = config["Simulation_Settings"]["test"]
     if is_test_run:
@@ -110,9 +134,10 @@ def get_copper_el_prices(config, copper_result_dir="copper/results/LastRun"):
     print(
         f"n_days: {n_days}, using {run_day_key}: {config['Simulation_Settings'][run_day_key]}"
     )
-    prices = duals.set_index(["year","hour","province"])[["dual_price"]]* -n_days / 365
+    prices = (
+        duals.set_index(["year", "hour", "province"])[["dual_price"]] * -n_days / 365
+    )
 
-    prices /= 10  # $/MWh -> c/kWh
     return prices
 
 
@@ -139,7 +164,9 @@ if __name__ == "__main__":
     # which model to run first?
     batch_parameters = {
         "N": [79],
-        "province": ["Ontario",],
+        "province": [
+            "Ontario",
+        ],
         "random_seed": list(range(42, 48)),
         "tech_attitude_dist_func": beta_with_mode_at,
         "tech_attitude_dist_params": [best_tech_modes],
@@ -182,15 +209,28 @@ if __name__ == "__main__":
         # print(stdout, stderr)
         if "Traceback" in stderr or "Error" in stderr:
             print(stderr)
-            raise ChildProcessError("An error has occured during the execution of COPPER.")
+            raise ChildProcessError(
+                "An error has occured during the execution of COPPER."
+            )
         # retrieve copper results...
-        electricity_prices = get_copper_el_prices(config)
-        mean_electricity_prices = electricity_prices.groupby(["year", "province"]).mean()
+        prices = get_copper_el_prices(config)
 
-        el_price_copper = (
-            mean_electricity_prices
-            .reset_index()
-            .pivot(index="year", columns="province", values="dual_price")
+        # average prices have to be consumption weighted averages
+        copper_midx_demand = multi_index_copper_demand(copper_demand)
+        sum_prices = (
+            prices["dual_price"] * copper_midx_demand["value"].loc[prices.index]
+        )
+        mean_electricity_prices = (
+            sum_prices.groupby(["year", "province"]).sum()
+            / copper_midx_demand.loc[prices.index]
+            .groupby(["year", "province"])
+            .sum()["value"]
+        )
+
+        mean_electricity_prices /= 10  # $/MWh -> ct/kWh
+
+        el_price_copper = mean_electricity_prices.reset_index().pivot(
+            index="year", columns="province", values=0
         )
         print(f"Copper electricity prices:\n{el_price_copper}")
         # ... and merge them with the abm inputs
