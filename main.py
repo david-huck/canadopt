@@ -15,19 +15,21 @@ from abetam.data.canada import Provinces
 from abetam.data.canada.timeseries import demand_projection
 from abetam.batch import BatchResult
 from abetam.components.probability import beta_with_mode_at
+from e_prices import global_adjustment
+from copper.phases.postprocessing import get_disc_coeff
 
 
 # best peaks for tech attitude distribution
 best_tech_modes = {
-    "Electric furnace": 0.788965,
-    "Gas furnace": 0.388231,
-    "Heat pump": 0.346424,
-    "Oil furnace": 0.460226,
-    "Wood or wood pellets furnace": 0.516056,
+    "Electric furnace": 0.36274795785719943,
+    "Gas furnace": 0.47626887794633843,
+    "Heat pump": 0.60884054526341,
+    "Oil furnace": 0.1559770459529957,
+    "Wood or wood pellets furnace": 0.3777387473412798,
 }
 
 
-def add_abm_demand_to_projection(model_demand: pd.DataFrame):
+def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scenario"):
     model_demand = model_demand.reset_index()
     # colnames are integer years represented as string
     model_demand["COPPER_colnames"] = (
@@ -65,7 +67,7 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame):
         .reset_index()
     )
     copper_demand = pd.read_csv(
-        "copper/scenarios/BAU_scenario/demand/demand.csv", index_col=0
+        f"copper/scenarios/{scenario}/demand/demand.csv", index_col=0
     )
 
     copper_normalized_profiles = copper_demand / copper_demand.sum()
@@ -141,6 +143,15 @@ def get_copper_el_prices(config, copper_result_dir="copper/results/LastRun"):
     return prices
 
 
+def pv_to_current_value(prices, config):
+    years = prices.reset_index()["year"].unique()
+    disc_coeffs_dict = {year: get_disc_coeff(str(year), config) for year in years}
+    disc_coeffs = pd.Series(disc_coeffs_dict)
+    disc_coeffs.index.set_names(["year"], inplace="True")
+    prices /= disc_coeffs
+    return prices
+
+
 def add_province(df):
     if "province" in df.columns:
         return df
@@ -162,22 +173,26 @@ def set_batch_params_to_copper_config(batch_parameters, config):
 
 if __name__ == "__main__":
     # which model to run first?
+    scenario = "BAU_scenario"
     batch_parameters = {
-        "N": [79],
-        "province": [
-            "Ontario",
-        ],
+        "N": [500],
+        "province": ["Ontario"],
         "random_seed": list(range(42, 48)),
         "tech_attitude_dist_func": beta_with_mode_at,
         "tech_attitude_dist_params": [best_tech_modes],
         "start_year": 2020,
-        "price_weight_mode": 0.875,
+        "price_weight_mode": 0.738,
     }
 
-    config_path = "copper/scenarios/BAU_scenario/config.toml"
+    config_path = f"copper/scenarios/{scenario}/config.toml"
     config = toml.load(config_path)
 
-    for i in range(2):
+    # TODO: ensure electricity prices are reset before execution
+    el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
+    el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
+    el_prices_df = el_prices_df.loc[:2022,:]
+
+    for i in range(3):
         print(f"Iteration {i}, running ABM...")
         batch_result = BatchResult.from_parameters(
             batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
@@ -190,7 +205,7 @@ if __name__ == "__main__":
 
         # ... and set them as copper demands
         copper_demand.to_csv(
-            "copper/scenarios/BAU_scenario/demand/user_input_demand.csv"
+            f"copper/scenarios/{scenario}/demand/user_input_demand.csv"
         )
 
         # adapt copper config to the current run
@@ -227,15 +242,20 @@ if __name__ == "__main__":
             .sum()["value"]
         )
 
+        
+        # undiscount the prices
+        mean_electricity_prices = pv_to_current_value(mean_electricity_prices, config)
         mean_electricity_prices /= 10  # $/MWh -> ct/kWh
 
-        el_price_copper = mean_electricity_prices.reset_index().pivot(
+        ga = global_adjustment(mean_electricity_prices)
+        effective_el_prices = mean_electricity_prices + ga
+        el_price_copper = effective_el_prices.reset_index().pivot(
             index="year", columns="province", values=0
         )
-        print(f"Copper electricity prices:\n{el_price_copper}")
+        print(f"Copper electricity prices:\n{mean_electricity_prices}")
+        print(f"Global adjustment:\n{ga}")
         # ... and merge them with the abm inputs
-        el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
-        el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
+
 
         for year in el_price_copper.index:
             for prov in el_price_copper.columns:
