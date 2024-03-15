@@ -17,6 +17,8 @@ from abetam.batch import BatchResult
 from abetam.components.probability import beta_with_mode_at
 from e_prices import global_adjustment
 from copper.phases.postprocessing import get_disc_coeff
+from scenarios import generate_cost_projections, generate_scenario_attitudes, MODES_2020, FAST_TRANSITION_MODES_AND_YEARS
+    
 
 
 # best peaks for tech attitude distribution
@@ -28,6 +30,24 @@ best_tech_modes = {
     "Wood or wood pellets furnace": 0.3777387473412798,
 }
 
+def spread_model_demand(model_demand_df):
+    if len(model_demand_df) > 8500:
+        return model_demand_df
+    series = []
+    for col in model_demand_df.columns:
+        province = col.split(".")[0]
+        c_series = spread_non_hourly_demand(model_demand_df[col], province)
+        c_series.name = col
+        series.append(c_series)
+    return pd.concat(series, axis=1)
+
+
+def spread_non_hourly_demand(demand_ts, province):
+    if len(demand_ts) > 8500:
+        return demand_ts
+    demand_shape = pd.read_pickle("data/canada/timeseries/canada_agg_demand_shapes.pkl")[province]
+    demand = demand_shape*demand_ts.sum()/demand_shape.sum()
+    return demand
 
 def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scenario"):
     model_demand = model_demand.reset_index()
@@ -39,6 +59,10 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scena
         index="hour", columns=["COPPER_colnames"], values="Electricity"
     )
     model_demand /= 1000  # kWh -> MWh
+
+    # in the implementation of 15.03. the abm works on a weekly basis,
+    # this adds back the hourly resolution
+    model_demand = spread_model_demand(model_demand)
 
     projection_df = demand_projection.query(
         "Scenario=='Global Net-zero' and Variable=='Electricity' and Sector!='Total End-Use'"
@@ -172,25 +196,32 @@ def set_batch_params_to_copper_config(batch_parameters, config):
 
 
 if __name__ == "__main__":
-    # which model to run first?
-    scenario = "BAU_scenario"
+    tech_attitude_scenario = generate_scenario_attitudes(MODES_2020, FAST_TRANSITION_MODES_AND_YEARS)
+    generate_cost_projections(learning_rate=11.1, write_csv=True)
+    gut = 0.3
+    p_mode = 0.35
+    
     batch_parameters = {
         "N": [500],
         "province": ["Ontario"],
         "random_seed": list(range(42, 48)),
-        "tech_attitude_dist_func": beta_with_mode_at,
-        "tech_attitude_dist_params": [best_tech_modes],
+        "n_segregation_steps": [40],
+        "tech_att_mode_table": [tech_attitude_scenario],
+        "global_util_thresh": [gut],
+        "price_weight_mode": [p_mode],
+        "ts_step_length": ["w"],
         "start_year": 2020,
-        "price_weight_mode": 0.738,
     }
 
+    # which model to run first?
+    scenario = "BAU_scenario"
     config_path = f"copper/scenarios/{scenario}/config.toml"
     config = toml.load(config_path)
 
     # TODO: ensure electricity prices are reset before execution
     el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
     el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
-    el_prices_df = el_prices_df.loc[:2022,:]
+    el_prices_df = el_prices_df.loc[:2022, :]
 
     for i in range(3):
         print(f"Iteration {i}, running ABM...")
