@@ -17,8 +17,12 @@ from abetam.batch import BatchResult
 from abetam.components.probability import beta_with_mode_at
 from e_prices import global_adjustment
 from copper.phases.postprocessing import get_disc_coeff
-from scenarios import generate_cost_projections, generate_scenario_attitudes, MODES_2020, FAST_TRANSITION_MODES_AND_YEARS
-    
+from scenarios import (
+    generate_cost_projections,
+    generate_scenario_attitudes,
+    MODES_2020,
+    FAST_TRANSITION_MODES_AND_YEARS,
+)
 
 
 # best peaks for tech attitude distribution
@@ -29,6 +33,7 @@ best_tech_modes = {
     "Oil furnace": 0.1559770459529957,
     "Wood or wood pellets furnace": 0.3777387473412798,
 }
+
 
 def spread_model_demand(model_demand_df):
     if len(model_demand_df) > 8500:
@@ -45,9 +50,12 @@ def spread_model_demand(model_demand_df):
 def spread_non_hourly_demand(demand_ts, province):
     if len(demand_ts) > 8500:
         return demand_ts
-    demand_shape = pd.read_pickle("data/canada/timeseries/canada_agg_demand_shapes.pkl")[province]
-    demand = demand_shape*demand_ts.sum()/demand_shape.sum()
+    demand_shape = pd.read_pickle(
+        "abetam/data/canada/timeseries/canada_agg_demand_shapes.pkl"
+    )[province]
+    demand = demand_shape * demand_ts.sum() / demand_shape.sum()
     return demand
+
 
 def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scenario"):
     model_demand = model_demand.reset_index()
@@ -196,11 +204,13 @@ def set_batch_params_to_copper_config(batch_parameters, config):
 
 
 if __name__ == "__main__":
-    tech_attitude_scenario = generate_scenario_attitudes(MODES_2020, FAST_TRANSITION_MODES_AND_YEARS)
+    tech_attitude_scenario = generate_scenario_attitudes(
+        MODES_2020, FAST_TRANSITION_MODES_AND_YEARS
+    )
     generate_cost_projections(learning_rate=11.1, write_csv=True)
     gut = 0.3
     p_mode = 0.35
-    
+    province = "Ontario"
     batch_parameters = {
         "N": [500],
         "province": [province],
@@ -218,20 +228,26 @@ if __name__ == "__main__":
     config_path = f"copper/scenarios/{scenario}/config.toml"
     config = toml.load(config_path)
 
-    
     # ensure electricity prices are reset before execution
     el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
     el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
     el_prices_df = el_prices_df.loc[:2022, :]
 
-    for i in range(3):
+    for i in range(2):
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
-            prices = pd.read_csv("abetam/data/canada/end-use-prices-2023_ct_per_kWh.csv", index_col=0)
-            drop_rows = (prices["Region"]==province) & (prices["Year"]>2020) & (prices["Variable"]=='Electricity')
-            prices.loc[~drop_rows,:].to_csv("abetam/data/canada/end-use-prices-2023_ct_per_kWh.csv")
+            prices = pd.read_csv(
+                "abetam/data/canada/end-use-prices-2023_ct_per_kWh.csv", index_col=0
+            )
+            drop_rows = (
+                (prices["Region"] == province)
+                & (prices["Year"] > 2020)
+                & (prices["Variable"] == "Electricity")
+            )
+            prices.loc[~drop_rows, :].to_csv(
+                "abetam/data/canada/end-use-prices-2023_ct_per_kWh.csv"
+            )
 
-        
         print(f"Iteration {i}, running ABM...")
         batch_result = BatchResult.from_parameters(
             batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
@@ -267,32 +283,16 @@ if __name__ == "__main__":
                 "An error has occured during the execution of COPPER."
             )
         # retrieve copper results...
-        prices = get_copper_el_prices(config)
-
-        # average prices have to be consumption weighted averages
-        copper_midx_demand = multi_index_copper_demand(copper_demand)
-        sum_prices = (
-            prices["dual_price"] * copper_midx_demand["value"].loc[prices.index]
-        )
-        mean_electricity_prices = (
-            sum_prices.groupby(["year", "province"]).sum()
-            / copper_midx_demand.loc[prices.index]
-            .groupby(["year", "province"])
-            .sum()["value"]
-        )
-
-        # undiscount the prices... 
-        mean_electricity_prices = pv_to_current_value(mean_electricity_prices, config)
-        mean_electricity_prices /= 10  # $/MWh -> ct/kWh
+        prices = pd.read_csv("copper/results/LastRun/annual_avg_prices.csv", index_col=0).rename({"pds":"year"}, axis=1).set_index(["year","province"])
+        mean_electricity_prices = prices["price(CAD/MWh)"] / 10  # $/MWh -> ct/kWh
+        mean_electricity_prices.name = "ct/kWh"
 
         ga = global_adjustment(mean_electricity_prices)
         effective_el_prices = mean_electricity_prices + ga
-        el_price_copper = effective_el_prices.reset_index().pivot(
-            index="year", columns="province", values=0
-        )
+        el_price_copper = effective_el_prices.reset_index().pivot(index="year", columns="province", values="ct/kWh")
         print(f"Copper electricity prices:\n{mean_electricity_prices}")
         print(f"Global adjustment:\n{ga}")
-        
+
         # ... and merge them with the abm inputs
         for year in el_price_copper.index:
             for prov in el_price_copper.columns:
