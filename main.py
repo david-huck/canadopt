@@ -203,7 +203,7 @@ if __name__ == "__main__":
     
     batch_parameters = {
         "N": [500],
-        "province": ["Ontario"],
+        "province": [province],
         "random_seed": list(range(42, 48)),
         "n_segregation_steps": [40],
         "tech_att_mode_table": [tech_attitude_scenario],
@@ -218,12 +218,20 @@ if __name__ == "__main__":
     config_path = f"copper/scenarios/{scenario}/config.toml"
     config = toml.load(config_path)
 
-    # TODO: ensure electricity prices are reset before execution
+    
+    # ensure electricity prices are reset before execution
     el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
     el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
     el_prices_df = el_prices_df.loc[:2022, :]
 
     for i in range(3):
+        if i:
+            # remove projected prices after first iteration, to only use the COPPER-determined prices
+            prices = pd.read_csv("abetam/data/canada/end-use-prices-2023_ct_per_kWh.csv", index_col=0)
+            drop_rows = (prices["Region"]==province) & (prices["Year"]>2020) & (prices["Variable"]=='Electricity')
+            prices.loc[~drop_rows,:].to_csv("abetam/data/canada/end-use-prices-2023_ct_per_kWh.csv")
+
+        
         print(f"Iteration {i}, running ABM...")
         batch_result = BatchResult.from_parameters(
             batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
@@ -232,7 +240,7 @@ if __name__ == "__main__":
 
         # retrieve abm time series results...
         demand_df = batch_result.mean_carrier_demand_df
-        copper_demand = add_abm_demand_to_projection(demand_df)
+        copper_demand = add_abm_demand_to_projection(demand_df, scenario=scenario)
 
         # ... and set them as copper demands
         copper_demand.to_csv(
@@ -273,8 +281,7 @@ if __name__ == "__main__":
             .sum()["value"]
         )
 
-        
-        # undiscount the prices
+        # undiscount the prices... 
         mean_electricity_prices = pv_to_current_value(mean_electricity_prices, config)
         mean_electricity_prices /= 10  # $/MWh -> ct/kWh
 
@@ -285,9 +292,8 @@ if __name__ == "__main__":
         )
         print(f"Copper electricity prices:\n{mean_electricity_prices}")
         print(f"Global adjustment:\n{ga}")
+        
         # ... and merge them with the abm inputs
-
-
         for year in el_price_copper.index:
             for prov in el_price_copper.columns:
                 el_prices_df.at[year, prov] = el_price_copper.loc[year, prov]
