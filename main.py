@@ -2,7 +2,6 @@ import subprocess as sp
 import pandas as pd
 import toml
 from pathlib import Path
-import os
 import git
 import sys
 
@@ -17,12 +16,14 @@ from abetam.batch import BatchResult
 from abetam.components.probability import beta_with_mode_at
 from e_prices import global_adjustment
 from copper.phases.postprocessing import get_disc_coeff
-from scenarios import (
-    generate_cost_projections,
+from abetam.scenarios import (
+    generate_hp_cost_projections,
     generate_scenario_attitudes,
     MODES_2020,
     FAST_TRANSITION_MODES_AND_YEARS,
 )
+
+from scenarios import update_tech_evo, FAST_TRANSITION_LR_PV, FAST_TRANSITION_LR_WIND
 
 
 # best peaks for tech attitude distribution
@@ -125,14 +126,6 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scena
     return copper_input
 
 
-def get_copper_duals(copper_result_dir="copper/results/LastRun"):
-    duals = pd.read_csv(f"{copper_result_dir}/duals.csv").set_index(
-        ["year", "hour", "node"]
-    )
-    duals = add_province(duals)
-    return duals
-
-
 def multi_index_copper_demand(copper_demand):
     """transforms the copper demand dataframe from a wide to a long format
 
@@ -158,32 +151,6 @@ def multi_index_copper_demand(copper_demand):
     return copper_demand_bidx
 
 
-def get_copper_el_prices(config, copper_result_dir="copper/results/LastRun"):
-    duals = get_copper_duals(copper_result_dir)
-    run_day_key = "run_days"
-    is_test_run = config["Simulation_Settings"]["test"]
-    if is_test_run:
-        run_day_key += "_test"
-    n_days = len(config["Simulation_Settings"][run_day_key])
-    print(
-        f"n_days: {n_days}, using {run_day_key}: {config['Simulation_Settings'][run_day_key]}"
-    )
-    prices = (
-        duals.set_index(["year", "hour", "province"])[["dual_price"]] * -n_days / 365
-    )
-
-    return prices
-
-
-def pv_to_current_value(prices, config):
-    years = prices.reset_index()["year"].unique()
-    disc_coeffs_dict = {year: get_disc_coeff(str(year), config) for year in years}
-    disc_coeffs = pd.Series(disc_coeffs_dict)
-    disc_coeffs.index.set_names(["year"], inplace="True")
-    prices /= disc_coeffs
-    return prices
-
-
 def add_province(df):
     if "province" in df.columns:
         return df
@@ -204,10 +171,15 @@ def set_batch_params_to_copper_config(batch_parameters, config):
 
 
 if __name__ == "__main__":
+
+    update_tech_evo(
+        pv_lr=FAST_TRANSITION_LR_PV, wind_lr=FAST_TRANSITION_LR_WIND, write_csv=True
+    )
     tech_attitude_scenario = generate_scenario_attitudes(
         MODES_2020, FAST_TRANSITION_MODES_AND_YEARS
     )
-    generate_cost_projections(learning_rate=11.1, write_csv=True)
+    generate_hp_cost_projections(learning_rate=11.1, write_csv=True)
+
     gut = 0.3
     p_mode = 0.35
     province = "Ontario"
@@ -267,7 +239,7 @@ if __name__ == "__main__":
         set_batch_params_to_copper_config(batch_parameters, config)
 
         # run copper model for the selected provinces
-        print(f"Iteration {i}, running COPPER...")
+        print(f"Iteration {i}, running COPPER with demands :{copper_demand.sum()}")
         result = sp.run(
             ["python", "COPPER.py"],
             stdout=sp.PIPE,
@@ -283,13 +255,19 @@ if __name__ == "__main__":
                 "An error has occured during the execution of COPPER."
             )
         # retrieve copper results...
-        prices = pd.read_csv("copper/results/LastRun/annual_avg_prices.csv", index_col=0).rename({"pds":"year"}, axis=1).set_index(["year","province"])
+        prices = (
+            pd.read_csv("copper/results/LastRun/annual_avg_prices.csv", index_col=0)
+            .rename({"pds": "year"}, axis=1)
+            .set_index(["year", "province"])
+        )
         mean_electricity_prices = prices["price(CAD/MWh)"] / 10  # $/MWh -> ct/kWh
         mean_electricity_prices.name = "ct/kWh"
 
         ga = global_adjustment(mean_electricity_prices)
         effective_el_prices = mean_electricity_prices + ga
-        el_price_copper = effective_el_prices.reset_index().pivot(index="year", columns="province", values="ct/kWh")
+        el_price_copper = effective_el_prices.reset_index().pivot(
+            index="year", columns="province", values="ct/kWh"
+        )
         print(f"Copper electricity prices:\n{mean_electricity_prices}")
         print(f"Global adjustment:\n{ga}")
 
