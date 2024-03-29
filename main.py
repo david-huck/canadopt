@@ -23,7 +23,12 @@ from abetam.scenarios import (
     FAST_TRANSITION_MODES_AND_YEARS,
 )
 
-from scenarios import update_tech_evo, FAST_TRANSITION_LR_PV, FAST_TRANSITION_LR_WIND
+from scenarios import (
+    update_tech_evo,
+    FAST_TRANSITION_LR_PV,
+    FAST_TRANSITION_LR_WIND,
+    modify_carbon_tax,
+)
 
 
 # best peaks for tech attitude distribution
@@ -118,11 +123,12 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scena
     #                   J->Wh, P -> M
     rest_demand_df *= (1 / 3600) * 1e9
 
-    # print(f"{model_demand=}")
-    common_cols = set(rest_demand_df.columns).intersection(model_demand.columns)
-    # set(rest_demand_df.columns).difference(model_demand.columns)
-    copper_input = rest_demand_df.loc[:, list(common_cols)] + model_demand
-    # print(f"{copper_input=}")
+    # determine common columns
+    common_cols = sorted(set(rest_demand_df.columns).intersection(model_demand.columns))
+
+    # add demands with common (int) index
+    copper_input = rest_demand_df.loc[:, common_cols] + model_demand.reset_index(drop=True)
+    assert copper_input.isna().sum().sum() == 0, AssertionError(f"Calculated copper input contains nans:\n{copper_input[copper_input.isna()]}")
     return copper_input
 
 
@@ -161,6 +167,8 @@ def add_province(df):
 
 
 def set_batch_params_to_copper_config(batch_parameters, config):
+
+    config["Simulation_Settings"]["user_specified_demand"] = True
     config["Simulation_Settings"]["ap"] = batch_parameters["province"]
     config["Simulation_Settings"]["aba"] = [
         ba
@@ -172,19 +180,32 @@ def set_batch_params_to_copper_config(batch_parameters, config):
 
 if __name__ == "__main__":
 
+
+    # which model to run first?
+    scenario = "CER_scenario"
+    config_path = f"copper/scenarios/{scenario}/config.toml"
+    config = toml.load(config_path)
+
+    # SCENARIO parameters for COPPER
+    config["Carbon"]["national_emission_limit"] = True
+    config = modify_carbon_tax(config, 2)
     update_tech_evo(
-        pv_lr=FAST_TRANSITION_LR_PV, wind_lr=FAST_TRANSITION_LR_WIND, write_csv=True
+        scenario,
+        pv_lr=FAST_TRANSITION_LR_PV,
+        wind_lr=FAST_TRANSITION_LR_WIND,
+        write_csv=True,
     )
+
+    # SCENARIO parameters for ABETAM
+    generate_hp_cost_projections(learning_rate=11.1, write_csv=True)
     tech_attitude_scenario = generate_scenario_attitudes(
         MODES_2020, FAST_TRANSITION_MODES_AND_YEARS
     )
-    generate_hp_cost_projections(learning_rate=11.1, write_csv=True)
-
-    gut = 0.3
-    p_mode = 0.35
+    gut = 0.3  # result of fit
+    p_mode = 0.35  # result of fit
     province = "Ontario"
     batch_parameters = {
-        "N": [500],
+        "N": [100],
         "province": [province],
         "random_seed": list(range(42, 48)),
         "n_segregation_steps": [40],
@@ -194,11 +215,6 @@ if __name__ == "__main__":
         "ts_step_length": ["w"],
         "start_year": 2020,
     }
-
-    # which model to run first?
-    scenario = "BAU_scenario"
-    config_path = f"copper/scenarios/{scenario}/config.toml"
-    config = toml.load(config_path)
 
     # ensure electricity prices are reset before execution
     el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
@@ -239,16 +255,18 @@ if __name__ == "__main__":
         set_batch_params_to_copper_config(batch_parameters, config)
 
         # run copper model for the selected provinces
-        print(f"Iteration {i}, running COPPER with demands :{copper_demand.sum()}")
+        print(f"Iteration {i}, running COPPER with demands:\n{copper_demand.sum()}")
         result = sp.run(
-            ["python", "COPPER.py"],
+            ["python", "COPPER.py", scenario],
             stdout=sp.PIPE,
             stderr=sp.PIPE,
             cwd=copper_dir.as_posix(),
         )
         stdout = result.stdout.decode("utf-8")
         stderr = result.stderr.decode("utf-8")
-        # print(stdout, stderr)
+        
+        print(stdout[:50])
+
         if "Traceback" in stderr or "Error" in stderr:
             print(stderr)
             raise ChildProcessError(
