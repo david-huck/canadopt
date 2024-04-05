@@ -10,10 +10,8 @@ abetam_dir = Path(root_dir) / "abetam"
 copper_dir = Path(root_dir) / "copper"
 sys.path.append(abetam_dir.as_posix())
 
-from abetam.data.canada import Provinces
 from abetam.data.canada.timeseries import demand_projection
 from abetam.batch import BatchResult
-from abetam.components.probability import beta_with_mode_at
 from e_prices import global_adjustment
 from copper.phases.postprocessing import get_disc_coeff
 from abetam.scenarios import (
@@ -22,23 +20,6 @@ from abetam.scenarios import (
     MODES_2020,
     FAST_TRANSITION_MODES_AND_YEARS,
 )
-
-from scenarios import (
-    update_tech_evo,
-    FAST_TRANSITION_LR_PV,
-    FAST_TRANSITION_LR_WIND,
-    modify_carbon_tax,
-)
-
-
-# best peaks for tech attitude distribution
-best_tech_modes = {
-    "Electric furnace": 0.36274795785719943,
-    "Gas furnace": 0.47626887794633843,
-    "Heat pump": 0.60884054526341,
-    "Oil furnace": 0.1559770459529957,
-    "Wood or wood pellets furnace": 0.3777387473412798,
-}
 
 
 def spread_model_demand(model_demand_df):
@@ -76,7 +57,7 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scena
 
     # in the implementation of 15.03. the abm works on a weekly basis,
     # this adds back the hourly resolution
-    model_demand = spread_model_demand(model_demand)
+    model_demand = spread_model_demand(model_demand).reset_index(drop=True)
 
     projection_df = demand_projection.query(
         "Scenario=='Global Net-zero' and Variable=='Electricity' and Sector!='Total End-Use'"
@@ -167,7 +148,6 @@ def add_province(df):
 
 
 def set_batch_params_to_copper_config(batch_parameters, config):
-
     config["Simulation_Settings"]["user_specified_demand"] = True
     config["Simulation_Settings"]["ap"] = batch_parameters["province"]
     config["Simulation_Settings"]["aba"] = [
@@ -205,7 +185,7 @@ if __name__ == "__main__":
     p_mode = 0.35  # result of fit
     province = "Ontario"
     batch_parameters = {
-        "N": [100],
+        "N": [500],
         "province": [province],
         "random_seed": list(range(42, 48)),
         "n_segregation_steps": [40],
@@ -221,7 +201,7 @@ if __name__ == "__main__":
     el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
     el_prices_df = el_prices_df.loc[:2022, :]
 
-    for i in range(2):
+    for i in range(3):
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
             prices = pd.read_csv(

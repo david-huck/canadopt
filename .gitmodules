@@ -3,4 +3,4 @@
 	url = https://github.com/david-huck/abetam
 [submodule "copper"]
 	path = copper
-	url = https://gitlab.com/McPherson/copper.git
+	url = https://gitlab.com/sesit/copper
