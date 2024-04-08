@@ -4,21 +4,35 @@ import toml
 from pathlib import Path
 import git
 import sys
+from datetime import datetime
 
 root_dir = git.Repo().working_dir
 abetam_dir = Path(root_dir) / "abetam"
 copper_dir = Path(root_dir) / "copper"
 sys.path.append(abetam_dir.as_posix())
-
+# ruff: noqa: E402
 from abetam.data.canada.timeseries import demand_projection
 from abetam.batch import BatchResult
 from e_prices import global_adjustment
-from copper.phases.postprocessing import get_disc_coeff
 from abetam.scenarios import (
     generate_hp_cost_projections,
     generate_scenario_attitudes,
     MODES_2020,
     FAST_TRANSITION_MODES_AND_YEARS,
+    SLOW_TRANSITION_MODES_AND_YEARS,
+    FAST_TRANSITION_HP_LR,
+    CER_TRANSITION_HP_LR,
+    SLOW_TRANSITION_HP_LR,
+)
+from scenarios import (
+    modify_carbon_tax,
+    update_tech_evo,
+    FAST_TRANSITION_LR_PV,
+    FAST_TRANSITION_LR_WIND,
+    SLOW_TRANSITION_LR_PV,
+    SLOW_TRANSITION_LR_WIND,
+    COPPER_LR_PV,
+    COPPER_LR_WIND,
 )
 
 
@@ -108,8 +122,12 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scena
     common_cols = sorted(set(rest_demand_df.columns).intersection(model_demand.columns))
 
     # add demands with common (int) index
-    copper_input = rest_demand_df.loc[:, common_cols] + model_demand.reset_index(drop=True)
-    assert copper_input.isna().sum().sum() == 0, AssertionError(f"Calculated copper input contains nans:\n{copper_input[copper_input.isna()]}")
+    copper_input = rest_demand_df.loc[:, common_cols] + model_demand.reset_index(
+        drop=True
+    )
+    assert copper_input.isna().sum().sum() == 0, AssertionError(
+        f"Calculated copper input contains nans:\n{copper_input[copper_input.isna()]}"
+    )
     return copper_input
 
 
@@ -148,7 +166,6 @@ def add_province(df):
 
 
 def set_batch_params_to_copper_config(batch_parameters, config):
-    config["Simulation_Settings"]["user_specified_demand"] = True
     config["Simulation_Settings"]["ap"] = batch_parameters["province"]
     config["Simulation_Settings"]["aba"] = [
         ba
@@ -158,31 +175,68 @@ def set_batch_params_to_copper_config(batch_parameters, config):
     toml.dump(config, open(config_path, "w"))
 
 
+learning_rates = {
+    "wind": {
+        "BAU": SLOW_TRANSITION_LR_WIND,
+        "CER": COPPER_LR_WIND,
+        "Rapid": FAST_TRANSITION_LR_WIND,
+    },
+    "pv": {
+        "BAU": SLOW_TRANSITION_LR_PV,
+        "CER": COPPER_LR_PV,
+        "Rapid": FAST_TRANSITION_LR_PV,
+    },
+    "HP": {
+        "BAU": SLOW_TRANSITION_HP_LR,
+        "CER": CER_TRANSITION_HP_LR,
+        "Rapid": FAST_TRANSITION_HP_LR,
+    },
+}
+
+hp_subsidies = {"BAU": 0, "CER": 15, "Rapid": 30}
+
+refurbishment_rate = {"BAU": 1, "CER": 2, "Rapid": 3}
+
+carbon_tax_mod = {"BAU": 1, "CER": 1, "Rapid": 2}
+
+emission_limit = {"BAU": False, "CER": False, "Rapid": True}
+
+att_modes = {
+    "BAU": SLOW_TRANSITION_MODES_AND_YEARS,
+    "CER": SLOW_TRANSITION_MODES_AND_YEARS,
+    "Rapid": FAST_TRANSITION_MODES_AND_YEARS,
+}
+
 if __name__ == "__main__":
-
-
+    scen_name = "BAU" # "BAU", "CER", "Rapid"
+    results_dir = f"./results/{scen_name}_"+datetime.now().strftime(r"%Y%m%d_%H%M")
     # which model to run first?
-    scenario = "CER_scenario"
+    scenario = f"{scen_name}_scenario" if scen_name != "Rapid" else "CER_scenario"
     config_path = f"copper/scenarios/{scenario}/config.toml"
     config = toml.load(config_path)
 
     # SCENARIO parameters for COPPER
-    config["Carbon"]["national_emission_limit"] = True
-    config = modify_carbon_tax(config, 2)
+    config["Simulation_Settings"]["test"] = False
+    config["Simulation_Settings"]["user_specified_demand"] = True
+
+    config["Carbon"]["national_emission_limit"] = emission_limit[scen_name]
+    config = modify_carbon_tax(config, carbon_tax_mod[scen_name])
     update_tech_evo(
         scenario,
-        pv_lr=FAST_TRANSITION_LR_PV,
-        wind_lr=FAST_TRANSITION_LR_WIND,
+        pv_lr=learning_rates["pv"][scen_name],
+        wind_lr=learning_rates["wind"][scen_name],
         write_csv=True,
     )
 
     # SCENARIO parameters for ABETAM
-    generate_hp_cost_projections(learning_rate=11.1, write_csv=True)
-    tech_attitude_scenario = generate_scenario_attitudes(
-        MODES_2020, FAST_TRANSITION_MODES_AND_YEARS
+    generate_hp_cost_projections(
+        learning_rate=learning_rates["HP"][scen_name], write_csv=True
     )
-    gut = 0.3  # result of fit
-    p_mode = 0.35  # result of fit
+    tech_attitude_scenario = generate_scenario_attitudes(
+        MODES_2020, att_modes[scen_name]
+    )
+    gut = 0.2  # result of fit
+    p_mode = 0.55  # result of fit
     province = "Ontario"
     batch_parameters = {
         "N": [500],
@@ -194,6 +248,8 @@ if __name__ == "__main__":
         "price_weight_mode": [p_mode],
         "ts_step_length": ["w"],
         "start_year": 2020,
+        "refurbishment_rate": refurbishment_rate[scen_name],
+        "hp_subsidy": hp_subsidies[scen_name]
     }
 
     # ensure electricity prices are reset before execution
@@ -220,7 +276,7 @@ if __name__ == "__main__":
         batch_result = BatchResult.from_parameters(
             batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
         )
-        batch_result.save()
+        batch_result.save(custom_path=results_dir+f"_{i}")
 
         # retrieve abm time series results...
         demand_df = batch_result.mean_carrier_demand_df
@@ -237,18 +293,19 @@ if __name__ == "__main__":
         # run copper model for the selected provinces
         print(f"Iteration {i}, running COPPER with demands:\n{copper_demand.sum()}")
         result = sp.run(
-            ["python", "COPPER.py", scenario],
+            ["python", "COPPER.py", "-s", scenario, "-sl", "gurobi", "-o", results_dir],
             stdout=sp.PIPE,
             stderr=sp.PIPE,
             cwd=copper_dir.as_posix(),
         )
         stdout = result.stdout.decode("utf-8")
         stderr = result.stderr.decode("utf-8")
-        
+
         print(stdout[:50])
 
         if "Traceback" in stderr or "Error" in stderr:
-            print(stderr)
+            print(f"{stderr=}")
+            print(f"{stdout=}")
             raise ChildProcessError(
                 "An error has occured during the execution of COPPER."
             )
