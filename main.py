@@ -193,9 +193,9 @@ learning_rates = {
     },
 }
 
-hp_subsidies = {"BAU": 0, "CER": 15, "Rapid": 30}
+hp_subsidies = {"BAU": 0.0, "CER": 0.15, "Rapid": 0.30}
 
-refurbishment_rate = {"BAU": 1, "CER": 2, "Rapid": 3}
+refurbishment_rate = {"BAU": 0.01, "CER": 0.02, "Rapid": 0.03}
 
 carbon_tax_mod = {"BAU": 1, "CER": 1, "Rapid": 2}
 
@@ -208,7 +208,10 @@ att_modes = {
 }
 
 if __name__ == "__main__":
-    scen_name = "BAU" # "BAU", "CER", "Rapid"
+    if len(sys.argv) > 1:
+        scen_name = sys.argv[1]
+    else:
+        scen_name = "BAU" # "BAU", "CER", "Rapid"
     results_dir = f"./results/{scen_name}_"+datetime.now().strftime(r"%Y%m%d_%H%M")
     # which model to run first?
     scenario = f"{scen_name}_scenario" if scen_name != "Rapid" else "CER_scenario"
@@ -257,7 +260,7 @@ if __name__ == "__main__":
     el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
     el_prices_df = el_prices_df.loc[:2022, :]
 
-    for i in range(3):
+    for i in range(2):
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
             prices = pd.read_csv(
