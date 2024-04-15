@@ -179,33 +179,64 @@ learning_rates = {
     "wind": {
         "BAU": SLOW_TRANSITION_LR_WIND,
         "CER": COPPER_LR_WIND,
+        "CER+": COPPER_LR_WIND,
         "Rapid": FAST_TRANSITION_LR_WIND,
     },
     "pv": {
         "BAU": SLOW_TRANSITION_LR_PV,
         "CER": COPPER_LR_PV,
+        "CER+": COPPER_LR_PV,
         "Rapid": FAST_TRANSITION_LR_PV,
     },
     "HP": {
         "BAU": SLOW_TRANSITION_HP_LR,
         "CER": CER_TRANSITION_HP_LR,
+        "CER+": CER_TRANSITION_HP_LR,
         "Rapid": FAST_TRANSITION_HP_LR,
     },
 }
 
-hp_subsidies = {"BAU": 0.0, "CER": 0.15, "Rapid": 0.30}
+hp_subsidies = {
+    "BAU": 0.0,
+    "CER": 0.15,
+    "CER+": 0.15,
+    "Rapid": 0.30
+    }
 
-refurbishment_rate = {"BAU": 0.01, "CER": 0.02, "Rapid": 0.03}
+refurbishment_rate = {
+    "BAU": 0.01,
+    "CER": 0.02,
+    "CER+": 0.02,
+    "Rapid": 0.03
+    }
 
-carbon_tax_mod = {"BAU": 1, "CER": 1, "Rapid": 2}
+carbon_tax_mod = {
+    "BAU": 1,
+    "CER": 1,
+    "CER+": 1,
+    "Rapid": 2
+    }
 
-emission_limit = {"BAU": False, "CER": False, "Rapid": True}
+emission_limit = {
+    "BAU": False,
+    "CER": False,
+    "CER+": False,
+    "Rapid": True
+    }
 
 att_modes = {
     "BAU": SLOW_TRANSITION_MODES_AND_YEARS,
     "CER": SLOW_TRANSITION_MODES_AND_YEARS,
+    "CER+": SLOW_TRANSITION_MODES_AND_YEARS,
     "Rapid": FAST_TRANSITION_MODES_AND_YEARS,
 }
+
+fossil_ban_years = {
+    "BAU": None,
+    "CER": None,
+    "CER+": 2030,
+    "Rapid": None
+    }
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -214,7 +245,7 @@ if __name__ == "__main__":
         scen_name = "BAU" # "BAU", "CER", "Rapid"
     results_dir = f"./results/{scen_name}_"+datetime.now().strftime(r"%Y%m%d_%H%M")
     # which model to run first?
-    scenario = f"{scen_name}_scenario" if scen_name != "Rapid" else "CER_scenario"
+    scenario = f"{scen_name}_scenario" if scen_name != "Rapid" and scen_name != "CER+"  else "CER_scenario"
     config_path = f"copper/scenarios/{scenario}/config.toml"
     config = toml.load(config_path)
 
@@ -252,7 +283,8 @@ if __name__ == "__main__":
         "ts_step_length": ["w"],
         "start_year": 2020,
         "refurbishment_rate": refurbishment_rate[scen_name],
-        "hp_subsidy": hp_subsidies[scen_name]
+        "hp_subsidy": hp_subsidies[scen_name],
+        "fossil_ban_year": fossil_ban_years[scen_name]
     }
 
     # ensure electricity prices are reset before execution
