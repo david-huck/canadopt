@@ -12,4 +12,3 @@ To get the coupled model running, open a terminal, navigate to a destination whe
 * `conda activate cando`
 * `python main.py`
 
-Note, that this project relies on `marginals` i.e. dual values in COPPER, which are only available if `hydro_development=false` in config entry. This is necessary, because the presence of binary/integer variables inhibits the export of duals.
