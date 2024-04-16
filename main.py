@@ -347,8 +347,9 @@ if __name__ == "__main__":
                 "An error has occured during the execution of COPPER."
             )
         # retrieve copper results...
+        last_run_dir = sorted(Path("copper/results").glob("*/LastRun"), key=lambda p: p.lstat().st_ctime, reverse=True)[0]
         prices = (
-            pd.read_csv("copper/results/LastRun/annual_avg_prices.csv", index_col=0)
+            pd.read_csv(f"{last_run_dir}/annual_avg_prices.csv", index_col=0)
             .rename({"pds": "year"}, axis=1)
             .set_index(["year", "province"])
         )
