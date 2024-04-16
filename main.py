@@ -11,8 +11,6 @@ abetam_dir = Path(root_dir) / "abetam"
 copper_dir = Path(root_dir) / "copper"
 sys.path.append(abetam_dir.as_posix())
 # ruff: noqa: E402
-from abetam.data.canada.timeseries import demand_projection
-from abetam.batch import BatchResult
 from e_prices import global_adjustment
 from abetam.scenarios import (
     generate_hp_cost_projections,
@@ -242,7 +240,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         scen_name = sys.argv[1]
     else:
-        scen_name = "BAU" # "BAU", "CER", "Rapid"
+        scen_name = "BAU"  # "BAU", "CER", "Rapid"
     results_dir = f"./results/{scen_name}_"+datetime.now().strftime(r"%Y%m%d_%H%M")
     # which model to run first?
     scenario = f"{scen_name}_scenario" if scen_name != "Rapid" and scen_name != "CER_plus"  else "CER_scenario"
@@ -266,6 +264,10 @@ if __name__ == "__main__":
     generate_hp_cost_projections(
         learning_rate=learning_rates["HP"][scen_name], write_csv=True
     )
+    # these imports need to happen after writing abetam/data/canada/heat_tech_params.csv
+    from abetam.data.canada.timeseries import demand_projection
+    from abetam.batch import BatchResult
+
     tech_attitude_scenario = generate_scenario_attitudes(
         MODES_2020, att_modes[scen_name]
     )
