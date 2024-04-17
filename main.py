@@ -13,25 +13,14 @@ sys.path.append(abetam_dir.as_posix())
 # ruff: noqa: E402
 from e_prices import global_adjustment
 from abetam.scenarios import (
-    generate_hp_cost_projections,
     generate_scenario_attitudes,
     MODES_2020,
     FAST_TRANSITION_MODES_AND_YEARS,
     SLOW_TRANSITION_MODES_AND_YEARS,
-    FAST_TRANSITION_HP_LR,
-    CER_TRANSITION_HP_LR,
-    SLOW_TRANSITION_HP_LR,
 )
-from scenarios import (
-    modify_carbon_tax,
-    update_tech_evo,
-    FAST_TRANSITION_LR_PV,
-    FAST_TRANSITION_LR_WIND,
-    SLOW_TRANSITION_LR_PV,
-    SLOW_TRANSITION_LR_WIND,
-    COPPER_LR_PV,
-    COPPER_LR_WIND,
-)
+from abetam.data.canada.timeseries import demand_projection
+from abetam.batch import BatchResult
+from scenarios import modify_carbon_tax
 
 
 def spread_model_demand(model_demand_df):
@@ -173,54 +162,13 @@ def set_batch_params_to_copper_config(batch_parameters, config):
     toml.dump(config, open(config_path, "w"))
 
 
-learning_rates = {
-    "wind": {
-        "BAU": SLOW_TRANSITION_LR_WIND,
-        "CER": COPPER_LR_WIND,
-        "CER_plus": COPPER_LR_WIND,
-        "Rapid": FAST_TRANSITION_LR_WIND,
-    },
-    "pv": {
-        "BAU": SLOW_TRANSITION_LR_PV,
-        "CER": COPPER_LR_PV,
-        "CER_plus": COPPER_LR_PV,
-        "Rapid": FAST_TRANSITION_LR_PV,
-    },
-    "HP": {
-        "BAU": SLOW_TRANSITION_HP_LR,
-        "CER": CER_TRANSITION_HP_LR,
-        "CER_plus": CER_TRANSITION_HP_LR,
-        "Rapid": FAST_TRANSITION_HP_LR,
-    },
-}
+hp_subsidies = {"BAU": 0.0, "CER": 0.15, "CER_plus": 0.15, "Rapid": 0.30}
 
-hp_subsidies = {
-    "BAU": 0.0,
-    "CER": 0.15,
-    "CER_plus": 0.15,
-    "Rapid": 0.30
-    }
+refurbishment_rate = {"BAU": 0.01, "CER": 0.02, "CER_plus": 0.02, "Rapid": 0.03}
 
-refurbishment_rate = {
-    "BAU": 0.01,
-    "CER": 0.02,
-    "CER_plus": 0.02,
-    "Rapid": 0.03
-    }
+carbon_tax_mod = {"BAU": 1, "CER": 1, "CER_plus": 1, "Rapid": 2}
 
-carbon_tax_mod = {
-    "BAU": 1,
-    "CER": 1,
-    "CER_plus": 1,
-    "Rapid": 2
-    }
-
-emission_limit = {
-    "BAU": False,
-    "CER": False,
-    "CER_plus": False,
-    "Rapid": True
-    }
+emission_limit = {"BAU": False, "CER": False, "CER_plus": False, "Rapid": True}
 
 att_modes = {
     "BAU": SLOW_TRANSITION_MODES_AND_YEARS,
@@ -229,21 +177,20 @@ att_modes = {
     "Rapid": FAST_TRANSITION_MODES_AND_YEARS,
 }
 
-fossil_ban_years = {
-    "BAU": None,
-    "CER": None,
-    "CER_plus": 2030,
-    "Rapid": None
-    }
+fossil_ban_years = {"BAU": None, "CER": None, "CER_plus": 2030, "Rapid": None}
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         scen_name = sys.argv[1]
     else:
         scen_name = "BAU"  # "BAU", "CER", "Rapid"
-    results_dir = f"./results/{scen_name}_"+datetime.now().strftime(r"%Y%m%d_%H%M")
+    results_dir = f"./results/{scen_name}_" + datetime.now().strftime(r"%Y%m%d_%H%M")
     # which model to run first?
-    scenario = f"{scen_name}_scenario" if scen_name != "Rapid" and scen_name != "CER_plus"  else "CER_scenario"
+    scenario = (
+        f"{scen_name}_scenario"
+        if scen_name != "Rapid" and scen_name != "CER_plus"
+        else "CER_scenario"
+    )
     config_path = f"copper/scenarios/{scenario}/config.toml"
     config = toml.load(config_path)
 
@@ -253,20 +200,8 @@ if __name__ == "__main__":
 
     config["Carbon"]["national_emission_limit"] = emission_limit[scen_name]
     config = modify_carbon_tax(config, carbon_tax_mod[scen_name])
-    update_tech_evo(
-        scenario,
-        pv_lr=learning_rates["pv"][scen_name],
-        wind_lr=learning_rates["wind"][scen_name],
-        write_csv=True,
-    )
 
     # SCENARIO parameters for ABETAM
-    generate_hp_cost_projections(
-        learning_rate=learning_rates["HP"][scen_name], write_csv=True
-    )
-    # these imports need to happen after writing abetam/data/canada/heat_tech_params.csv
-    from abetam.data.canada.timeseries import demand_projection
-    from abetam.batch import BatchResult
 
     tech_attitude_scenario = generate_scenario_attitudes(
         MODES_2020, att_modes[scen_name]
@@ -286,7 +221,7 @@ if __name__ == "__main__":
         "start_year": 2020,
         "refurbishment_rate": refurbishment_rate[scen_name],
         "hp_subsidy": hp_subsidies[scen_name],
-        "fossil_ban_year": fossil_ban_years[scen_name]
+        "fossil_ban_year": fossil_ban_years[scen_name],
     }
 
     # ensure electricity prices are reset before execution
@@ -313,7 +248,7 @@ if __name__ == "__main__":
         batch_result = BatchResult.from_parameters(
             batch_parameters, max_steps=(2050 - 2020) * 4, force_rerun=True
         )
-        batch_result.save(custom_path=results_dir+f"_{i}")
+        batch_result.save(custom_path=results_dir + f"_{i}")
 
         # retrieve abm time series results...
         demand_df = batch_result.mean_carrier_demand_df
@@ -347,7 +282,11 @@ if __name__ == "__main__":
                 "An error has occured during the execution of COPPER."
             )
         # retrieve copper results...
-        last_run_dir = sorted(Path("copper/results").glob("*/LastRun"), key=lambda p: p.lstat().st_ctime, reverse=True)[0]
+        last_run_dir = sorted(
+            Path("copper/results").glob("*/LastRun"),
+            key=lambda p: p.lstat().st_ctime,
+            reverse=True,
+        )[0]
         prices = (
             pd.read_csv(f"{last_run_dir}/annual_avg_prices.csv", index_col=0)
             .rename({"pds": "year"}, axis=1)
