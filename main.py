@@ -5,6 +5,8 @@ from pathlib import Path
 import git
 import sys
 from datetime import datetime
+from functools import partial
+import importlib
 
 root_dir = git.Repo().working_dir
 abetam_dir = Path(root_dir) / "abetam"
@@ -17,8 +19,11 @@ from abetam.scenarios import (
     MODES_2020,
     FAST_TRANSITION_MODES_AND_YEARS,
     SLOW_TRANSITION_MODES_AND_YEARS,
+    update_price_w_new_CT,
+    CT
 )
 from abetam.data.canada.timeseries import demand_projection
+from abetam.data import end_use_prices
 from abetam.batch import BatchResult
 from scenarios import modify_carbon_tax
 
@@ -223,6 +228,13 @@ if __name__ == "__main__":
         "hp_subsidy": hp_subsidies[scen_name],
         "fossil_ban_year": fossil_ban_years[scen_name],
     }
+
+    if carbon_tax_mod[scen_name] != 1:
+        new_CT = CT * carbon_tax_mod[scen_name]
+        update_prices = partial(update_price_w_new_CT, new_CT=new_CT)
+        end_use_prices["Price (ct/kWh)"] = end_use_prices[["Year", "Price (ct/kWh)","Type of fuel","GEO"]].apply(update_prices, axis=1)
+        end_use_prices.to_csv("abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv", index=False)
+        importlib.import_module("data.canada")
 
     # ensure electricity prices are reset before execution
     el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
