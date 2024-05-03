@@ -245,7 +245,7 @@ if __name__ == "__main__":
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
             prices = pd.read_csv(
-                "abetam/data/canada/end-use-prices-2023_ct_per_kWh.csv", index_col=0
+                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv", index_col=0
             )
             drop_rows = (
                 (prices["Region"] == province)
@@ -253,8 +253,10 @@ if __name__ == "__main__":
                 & (prices["Variable"] == "Electricity")
             )
             prices.loc[~drop_rows, :].to_csv(
-                "abetam/data/canada/end-use-prices-2023_ct_per_kWh.csv"
+                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv"
             )
+        # reload data module, to ensure price updates are reloaded 
+        importlib.import_module("data.canada")
 
         print(f"Iteration {i}, running ABM...")
         batch_result = BatchResult.from_parameters(
