@@ -23,7 +23,7 @@ from abetam.scenarios import (
     CT
 )
 from abetam.data.canada.timeseries import demand_projection
-from abetam.data import end_use_prices
+from abetam.data.canada import end_use_prices
 from abetam.batch import BatchResult
 from scenarios import modify_carbon_tax
 
@@ -245,12 +245,12 @@ if __name__ == "__main__":
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
             prices = pd.read_csv(
-                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv", index_col=0
+                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv"
             )
             drop_rows = (
                 (prices["Region"] == province)
                 & (prices["Year"] > 2020)
-                & (prices["Variable"] == "Electricity")
+                & (prices["Type of fuel"] == "Electricity")
             )
             prices.loc[~drop_rows, :].to_csv(
                 "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv"
