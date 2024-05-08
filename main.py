@@ -232,9 +232,9 @@ if __name__ == "__main__":
     if carbon_tax_mod[scen_name] != 1:
         new_CT = CT * carbon_tax_mod[scen_name]
         update_prices = partial(update_price_w_new_CT, new_CT=new_CT)
-        end_use_prices["Price (ct/kWh)"] = end_use_prices[["Year", "Price (ct/kWh)","Type of fuel","GEO"]].apply(update_prices, axis=1)
+        end_use_prices["Price (ct/kWh)"] = end_use_prices[["Year", "Price (ct/kWh)","Type of fuel","Region"]].apply(update_prices, axis=1)
         end_use_prices.to_csv("abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv", index=False)
-        importlib.import_module("data.canada")
+
 
     # ensure electricity prices are reset before execution
     el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
@@ -253,7 +253,7 @@ if __name__ == "__main__":
                 & (prices["Type of fuel"] == "Electricity")
             )
             prices.loc[~drop_rows, :].to_csv(
-                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv"
+                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv", index=False
             )
         # reload data module, to ensure price updates are reloaded 
         importlib.import_module("data.canada")
