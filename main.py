@@ -232,7 +232,7 @@ if __name__ == "__main__":
     if carbon_tax_mod[scen_name] != 1:
         new_CT = CT * carbon_tax_mod[scen_name]
         update_prices = partial(update_price_w_new_CT, new_CT=new_CT)
-        end_use_prices["Price (ct/kWh)"] = end_use_prices[["Year", "Price (ct/kWh)","Type of fuel","Region"]].apply(update_prices, axis=1)
+        end_use_prices["Price (ct/kWh)"] = end_use_prices[["Year", "Price (ct/kWh)","Type of fuel","GEO"]].apply(update_prices, axis=1)
         end_use_prices.to_csv("abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv", index=False)
 
 
@@ -248,7 +248,7 @@ if __name__ == "__main__":
                 "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv"
             )
             drop_rows = (
-                (prices["Region"] == province)
+                (prices["GEO"] == province)
                 & (prices["Year"] > 2020)
                 & (prices["Type of fuel"] == "Electricity")
             )

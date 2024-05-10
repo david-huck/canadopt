@@ -160,6 +160,7 @@ tech_agg = {
     'gascc_free_pre2025': "Fossil fuel gas",
     'gascc_free_post2025': "Fossil fuel gas",
     'gascg_free_post2025': "Fossil fuel gas",
+    "nuclear_retire": "Nuclear - retired"
 }
 
 # idea colors:
@@ -207,6 +208,7 @@ IDEA_COLORS = {
         'Biomass': '#33a02c',
         'nuclear': '#ff7f00',
         'Nuclear': '#ff7f00',
+        "Nuclear - retired": '#ff7f00',
         'solar': '#ffff99',
         'Solar': '#ffff99',
         'DR': '#b8860b',
