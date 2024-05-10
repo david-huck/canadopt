@@ -214,11 +214,12 @@ if __name__ == "__main__":
         scen_name = sys.argv[1]
     else:
         scen_name = "BAU"  # "BAU", "CER", "Rapid"
+    print("=== Scenario: {scen_name} ===")
     results_dir = f"./results/{scen_name}_" + datetime.now().strftime(r"%Y%m%d_%H%M")
     # which model to run first?
     scenario = (
         f"{scen_name}_scenario"
-        if "Rapid" not in scen_name  and scen_name != "CER_plus"
+        if "Rapid" not in scen_name and scen_name != "CER_plus"
         else "CER_scenario"
     )
     config_path = f"copper/scenarios/{scenario}/config.toml"
