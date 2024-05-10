@@ -20,7 +20,7 @@ from abetam.scenarios import (
     FAST_TRANSITION_MODES_AND_YEARS,
     SLOW_TRANSITION_MODES_AND_YEARS,
     update_price_w_new_CT,
-    CT
+    CT,
 )
 from abetam.data.canada.timeseries import demand_projection
 from abetam.data.canada import end_use_prices
@@ -167,22 +167,47 @@ def set_batch_params_to_copper_config(batch_parameters, config):
     toml.dump(config, open(config_path, "w"))
 
 
-hp_subsidies = {"BAU": 0.0, "CER": 0.15, "CER_plus": 0.15, "Rapid": 0.30}
+hp_subsidies = {
+    "BAU": 0.0,
+    "CER": 0.15,
+    "CER_plus": 0.15,
+    "Rapid": 0.30,
+    "Rapid_plus": 0.30,
+}
 
-refurbishment_rate = {"BAU": 0.01, "CER": 0.02, "CER_plus": 0.02, "Rapid": 0.03}
+refurbishment_rate = {
+    "BAU": 0.01,
+    "CER": 0.02,
+    "CER_plus": 0.02,
+    "Rapid": 0.03,
+    "Rapid_plus": 0.03,
+}
 
-carbon_tax_mod = {"BAU": 1, "CER": 1, "CER_plus": 1, "Rapid": 2}
+carbon_tax_mod = {"BAU": 1, "CER": 1, "CER_plus": 1, "Rapid": 2, "Rapid_plus": 2}
 
-emission_limit = {"BAU": False, "CER": False, "CER_plus": False, "Rapid": True}
+emission_limit = {
+    "BAU": False,
+    "CER": False,
+    "CER_plus": False,
+    "Rapid": True,
+    "Rapid_plus": True,
+}
 
 att_modes = {
     "BAU": SLOW_TRANSITION_MODES_AND_YEARS,
     "CER": SLOW_TRANSITION_MODES_AND_YEARS,
     "CER_plus": SLOW_TRANSITION_MODES_AND_YEARS,
     "Rapid": FAST_TRANSITION_MODES_AND_YEARS,
+    "Rapid_plus": FAST_TRANSITION_MODES_AND_YEARS,
 }
 
-fossil_ban_years = {"BAU": None, "CER": None, "CER_plus": 2030, "Rapid": None}
+fossil_ban_years = {
+    "BAU": None,
+    "CER": None,
+    "CER_plus": 2030,
+    "Rapid": None,
+    "Rapid_plus": 2026,
+}
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -193,7 +218,7 @@ if __name__ == "__main__":
     # which model to run first?
     scenario = (
         f"{scen_name}_scenario"
-        if scen_name != "Rapid" and scen_name != "CER_plus"
+        if "Rapid" not in scen_name  and scen_name != "CER_plus"
         else "CER_scenario"
     )
     config_path = f"copper/scenarios/{scenario}/config.toml"
@@ -232,9 +257,13 @@ if __name__ == "__main__":
     if carbon_tax_mod[scen_name] != 1:
         new_CT = CT * carbon_tax_mod[scen_name]
         update_prices = partial(update_price_w_new_CT, new_CT=new_CT)
-        end_use_prices["Price (ct/kWh)"] = end_use_prices[["Year", "Price (ct/kWh)","Type of fuel","GEO"]].apply(update_prices, axis=1)
-        end_use_prices.to_csv("abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv", index=False)
-
+        end_use_prices["Price (ct/kWh)"] = end_use_prices[
+            ["Year", "Price (ct/kWh)", "Type of fuel", "GEO"]
+        ].apply(update_prices, axis=1)
+        end_use_prices.to_csv(
+            "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv",
+            index=False,
+        )
 
     # ensure electricity prices are reset before execution
     el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
@@ -253,9 +282,10 @@ if __name__ == "__main__":
                 & (prices["Type of fuel"] == "Electricity")
             )
             prices.loc[~drop_rows, :].to_csv(
-                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv", index=False
+                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv",
+                index=False,
             )
-        # reload data module, to ensure price updates are reloaded 
+        # reload data module, to ensure price updates are reloaded
         importlib.import_module("data.canada")
 
         print(f"Iteration {i}, running ABM...")
@@ -314,8 +344,14 @@ if __name__ == "__main__":
         el_price_copper = effective_el_prices.reset_index().pivot(
             index="year", columns="province", values="ct/kWh"
         )
-        print(f"Copper electricity prices:\n{mean_electricity_prices}")
-        print(f"Global adjustment:\n{ga}")
+
+        ga.name = "GA"
+        mean_electricity_prices.name = "HOEP"
+        effective_el_prices.name = "final price"
+        price_info = pd.concat(
+            [mean_electricity_prices, ga, effective_el_prices], axis=1
+        )
+        print(price_info)
 
         # ... and merge them with the abm inputs
         for year in el_price_copper.index:
