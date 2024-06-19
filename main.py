@@ -214,7 +214,7 @@ if __name__ == "__main__":
         scen_name = sys.argv[1]
     else:
         scen_name = "BAU"  # "BAU", "CER", "Rapid"
-    print("=== Scenario: {scen_name} ===")
+    print(f"=== Scenario: {scen_name} ===")
     results_dir = f"./results/{scen_name}_" + datetime.now().strftime(r"%Y%m%d_%H%M")
     # which model to run first?
     scenario = (
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
     el_prices_df = el_prices_df.loc[:2022, :]
 
-    for i in range(2):
+    for i in range(8):
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
             prices = pd.read_csv(
@@ -352,6 +352,8 @@ if __name__ == "__main__":
         price_info = pd.concat(
             [mean_electricity_prices, ga, effective_el_prices], axis=1
         )
+        price_info["scenario"] = scen_name
+        price_info["iteration"] = i
         print(price_info)
 
         # ... and merge them with the abm inputs
