@@ -3,7 +3,6 @@ import plotly.graph_objects as go
 import numpy as np
 from scipy.optimize import curve_fit
 import pandas as pd
-from functools import partial
 from typing import Iterable
 
 hoep = pd.read_csv("ontario_hoep_historic.csv").set_index("Year").values.reshape((-1,))
