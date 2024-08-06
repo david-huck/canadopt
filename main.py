@@ -193,12 +193,28 @@ emission_limit = {
     "Rapid_plus": True,
 }
 
+NO_TRANSITION_MODES_AND_YEARS = {
+    'Electric furnace': {'end_att': 0.05, 'at_year': 2040},
+ 'Gas furnace': {'end_att': 0.95, 'at_year': 2030},
+ 'Heat pump': {'end_att': 0.05, 'at_year': 2030},
+ 'Oil furnace': {'end_att': 0.95, 'at_year': 2030},
+ 'Wood or wood pellets furnace': {'end_att': 0.109409, 'at_year': 2030}
+}
+
+MODERATE_MODES_AND_YEARS = {
+    "Electric furnace": {"end_att": 0.45, "at_year": 2040},
+    "Gas furnace": {"end_att": 0.076923, "at_year": 2030},
+    "Heat pump": {"end_att": 0.6, "at_year": 2040},
+    "Oil furnace": {"end_att": 0.05, "at_year": 2030},
+    "Wood or wood pellets furnace": {"end_att": 0.109409, "at_year": 2030},
+}
+
 att_modes = {
-    "BAU": FAST_TRANSITION_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "CER": FAST_TRANSITION_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "CER_plus": FAST_TRANSITION_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "Rapid": SLOW_TRANSITION_MODES_AND_YEARS, #FAST_TRANSITION_MODES_AND_YEARS,
-    "Rapid_plus": SLOW_TRANSITION_MODES_AND_YEARS, #FAST_TRANSITION_MODES_AND_YEARS,
+    "BAU": MODERATE_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
+    "CER": MODERATE_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
+    "CER_plus": MODERATE_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
+    "Rapid": MODERATE_MODES_AND_YEARS, #MODERATE_MODES_AND_YEARS,
+    "Rapid_plus": MODERATE_MODES_AND_YEARS, #MODERATE_MODES_AND_YEARS,
 }
 
 fossil_ban_years = {
@@ -210,6 +226,7 @@ fossil_ban_years = {
 }
 
 if __name__ == "__main__":
+    print("Mode distributions:",att_modes)
     if len(sys.argv) > 1:
         scen_name = sys.argv[1]
     else:
@@ -238,7 +255,7 @@ if __name__ == "__main__":
         MODES_2020, att_modes[scen_name]
     )
     gut = 0.2  # result of fit
-    p_mode = 0.55  # result of fit
+    p_mode = 0.7  # result of fit
     province = "Ontario"
     batch_parameters = {
         "N": [500],
@@ -246,7 +263,6 @@ if __name__ == "__main__":
         "random_seed": list(range(42, 48)),
         "n_segregation_steps": [40],
         "tech_att_mode_table": [tech_attitude_scenario],
-        "global_util_thresh": [gut],
         "price_weight_mode": [p_mode],
         "ts_step_length": ["w"],
         "start_year": 2020,
@@ -271,7 +287,7 @@ if __name__ == "__main__":
     el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
     el_prices_df = el_prices_df.loc[:2022, :]
 
-    for i in range(8):
+    for i in range(2):
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
             prices = pd.read_csv(
