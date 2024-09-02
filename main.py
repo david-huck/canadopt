@@ -193,28 +193,36 @@ emission_limit = {
     "Rapid_plus": True,
 }
 
-NO_TRANSITION_MODES_AND_YEARS = {
-    'Electric furnace': {'end_att': 0.05, 'at_year': 2040},
- 'Gas furnace': {'end_att': 0.95, 'at_year': 2030},
- 'Heat pump': {'end_att': 0.05, 'at_year': 2030},
- 'Oil furnace': {'end_att': 0.95, 'at_year': 2030},
- 'Wood or wood pellets furnace': {'end_att': 0.109409, 'at_year': 2030}
+start_atts = {
+    "Electric furnace": 0.283833,
+    "Gas furnace": 0.653435,
+    "Heat pump": 0.050000,
+    "Oil furnace": 0.728319,
+    "Biomass furnace": 0.514116,
 }
 
-MODERATE_MODES_AND_YEARS = {
-    "Electric furnace": {"end_att": 0.45, "at_year": 2040},
-    "Gas furnace": {"end_att": 0.076923, "at_year": 2030},
-    "Heat pump": {"end_att": 0.6, "at_year": 2040},
-    "Oil furnace": {"end_att": 0.05, "at_year": 2030},
-    "Wood or wood pellets furnace": {"end_att": 0.109409, "at_year": 2030},
+DEFAULT_MODES_AND_YEARS = {
+    "Electric furnace": {"end_att": 0.383833, "at_year": 2030},
+    "Gas furnace": {"end_att": 0.45, "at_year": 2030},
+    "Heat pump": {"end_att": 0.25, "at_year": 2030},
+    "Oil furnace": {"end_att": 0.728319, "at_year": 2030},
+    "Biomass furnace": {"end_att": 0.514116, "at_year": 2030},
 }
+PLUS_TRANSITION_MODES_AND_YEARS = {
+    "Electric furnace": {"end_att": 0.383833, "at_year": 2030},
+    "Gas furnace": {"end_att": 0.45, "at_year": 2030},
+    "Heat pump": {"end_att": 0.35, "at_year": 2030},
+    "Oil furnace": {"end_att": 0.728319, "at_year": 2030},
+    "Biomass furnace": {"end_att": 0.514116, "at_year": 2030},
+}
+
 
 att_modes = {
-    "BAU": MODERATE_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "CER": MODERATE_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "CER_plus": MODERATE_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "Rapid": MODERATE_MODES_AND_YEARS, #MODERATE_MODES_AND_YEARS,
-    "Rapid_plus": MODERATE_MODES_AND_YEARS, #MODERATE_MODES_AND_YEARS,
+    "BAU": DEFAULT_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
+    "CER": DEFAULT_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
+    "CER_plus": PLUS_TRANSITION_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
+    "Rapid": DEFAULT_MODES_AND_YEARS, #MODERATE_MODES_AND_YEARS,
+    "Rapid_plus": PLUS_TRANSITION_MODES_AND_YEARS, #MODERATE_MODES_AND_YEARS,
 }
 
 fossil_ban_years = {
@@ -254,8 +262,7 @@ if __name__ == "__main__":
     tech_attitude_scenario = generate_scenario_attitudes(
         MODES_2020, att_modes[scen_name]
     )
-    gut = 0.2  # result of fit
-    p_mode = 0.7  # result of fit
+    p_mode = 0.65  # result of fit
     province = "Ontario"
     batch_parameters = {
         "N": [500],
