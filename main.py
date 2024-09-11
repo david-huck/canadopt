@@ -176,10 +176,10 @@ def set_batch_params_to_copper_config(batch_parameters, config):
 
 hp_subsidies = {
     "BAU": 0.0,
-    "CER": 0.15,
-    "CER_plus": 0.15,
-    "Rapid": 0.30,
-    "Rapid_plus": 0.30,
+    "CER": 0.3,
+    "CER_plus": 0.3,
+    "Rapid": 0.5,
+    "Rapid_plus": 0.5,
 }
 
 refurbishment_rate = {
@@ -209,7 +209,7 @@ start_atts = {
 }
 
 DEFAULT_MODES_AND_YEARS = {
-    "Electric furnace": {"end_att": 0.383833, "at_year": 2030},
+    "Electric furnace": {"end_att": 0.45, "at_year": 2025}, #"Electric furnace": {"end_att": 0.40, "at_year": 2030},
     "Gas furnace": {"end_att": 0.45, "at_year": 2030},
     "Heat pump": {"end_att": 0.25, "at_year": 2030},
     "Oil furnace": {"end_att": 0.728319, "at_year": 2030},
@@ -272,7 +272,7 @@ if __name__ == "__main__":
     p_mode = 0.65  # result of fit
     province = "Ontario"
     batch_parameters = {
-        "N": [500],
+        "N": [1500],
         "province": [province],
         "random_seed": list(range(42, 48)),
         "n_segregation_steps": [40],
