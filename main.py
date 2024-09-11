@@ -17,13 +17,11 @@ from e_prices import global_adjustment
 from abetam.scenarios import (
     generate_scenario_attitudes,
     MODES_2020,
-    FAST_TRANSITION_MODES_AND_YEARS,
-    SLOW_TRANSITION_MODES_AND_YEARS,
     update_price_w_new_CT,
     CT,
 )
 from abetam.data.canada.timeseries import demand_projection
-from abetam.data.canada import end_use_prices
+from abetam.data.canada import end_use_prices, non_heating_residential_el_demand
 from abetam.batch import BatchResult
 from scenarios import modify_carbon_tax
 
@@ -53,6 +51,9 @@ def spread_non_hourly_demand(demand_ts, province):
 def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scenario"):
     model_demand = model_demand.reset_index()
     # colnames are integer years represented as string
+    province = model_demand["province"].unique()
+    assert len(province) == 1, NotImplementedError(f"Can only handle single provinces. Received: {province=}")
+    province = province[0]
     model_demand["COPPER_colnames"] = (
         model_demand["province"] + "." + model_demand["year"].astype(int).astype(str)
     )
@@ -64,6 +65,12 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scena
     # in the implementation of 15.03. the abm works on a weekly basis,
     # this adds back the hourly resolution
     model_demand = spread_model_demand(model_demand).reset_index(drop=True)
+    print(f"{model_demand.sum()=}")
+    # add non heating related residential demand (TWh)
+    non_heating_el_demand = non_heating_residential_el_demand(province, 2020) 
+    non_heating_el_demand_per_hour = non_heating_el_demand*1e6/8760 # TWh -> MWh, to equal amount per hour
+    model_demand += non_heating_el_demand_per_hour
+    print(f"{model_demand.sum()=}")
 
     projection_df = demand_projection.query(
         "Scenario=='Global Net-zero' and Variable=='Electricity' and Sector!='Total End-Use'"
@@ -271,7 +278,7 @@ if __name__ == "__main__":
         "n_segregation_steps": [40],
         "tech_att_mode_table": [tech_attitude_scenario],
         "price_weight_mode": [p_mode],
-        "ts_step_length": ["w"],
+        "ts_step_length": ["W"],
         "start_year": 2020,
         "refurbishment_rate": refurbishment_rate[scen_name],
         "hp_subsidy": hp_subsidies[scen_name],
