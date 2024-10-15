@@ -372,6 +372,7 @@ if __name__ == "__main__":
 
         ga = global_adjustment(mean_electricity_prices)
         effective_el_prices = mean_electricity_prices + ga
+        effective_el_prices = (effective_el_prices + 6.43)*1.13
         el_price_copper = effective_el_prices.reset_index().pivot(
             index="year", columns="province", values="ct/kWh"
         )
