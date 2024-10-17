@@ -285,21 +285,17 @@ if __name__ == "__main__":
         "fossil_ban_year": fossil_ban_years[scen_name],
     }
 
+    fuel_price_path = "abetam/data/canada/merged_fuel_prices.csv"
+    merged_fuel_prices = pd.read_csv(fuel_price_path).set_index(["Type of fuel", "Year", "GEO"])
+
+
     if carbon_tax_mod[scen_name] != 1:
         new_CT = CT * carbon_tax_mod[scen_name]
         update_prices = partial(update_price_w_new_CT, new_CT=new_CT)
-        end_use_prices["Price (ct/kWh)"] = end_use_prices[
-            ["Year", "Price (ct/kWh)", "Type of fuel", "GEO"]
-        ].apply(update_prices, axis=1)
-        end_use_prices.to_csv(
-            "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv",
-            index=False,
+        merged_fuel_prices["Price (ct/kWh)"] = merged_fuel_prices.reset_index().apply(update_prices, axis=1).values
+        merged_fuel_prices.reset_index().set_index(["GEO","Type of fuel", "Year"]).to_csv(
+            fuel_price_path
         )
-
-    # ensure electricity prices are reset before execution
-    el_price_path = "abetam/data/canada/ca_electricity_prices.csv"
-    el_prices_df = pd.read_csv(el_price_path).set_index("REF_DATE")
-    el_prices_df = el_prices_df.loc[:2022, :]
 
     for i in range(2):
         if i:
@@ -390,6 +386,6 @@ if __name__ == "__main__":
         # ... and merge them with the abm inputs
         for year in el_price_copper.index:
             for prov in el_price_copper.columns:
-                el_prices_df.at[year, prov] = el_price_copper.loc[year, prov]
-        el_prices_df.to_csv(el_price_path)
+                merged_fuel_prices.loc[("Electricity", year, prov), "Price (ct/kWh)"] = el_price_copper.loc[year, prov]
+        merged_fuel_prices.reset_index().set_index(["GEO","Type of fuel", "Year"]).to_csv(fuel_price_path)
     pass
