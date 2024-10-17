@@ -52,7 +52,9 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scena
     model_demand = model_demand.reset_index()
     # colnames are integer years represented as string
     province = model_demand["province"].unique()
-    assert len(province) == 1, NotImplementedError(f"Can only handle single provinces. Received: {province=}")
+    assert len(province) == 1, NotImplementedError(
+        f"Can only handle single provinces. Received: {province=}"
+    )
     province = province[0]
     model_demand["COPPER_colnames"] = (
         model_demand["province"] + "." + model_demand["year"].astype(int).astype(str)
@@ -67,8 +69,10 @@ def add_abm_demand_to_projection(model_demand: pd.DataFrame, scenario="BAU_scena
     model_demand = spread_model_demand(model_demand).reset_index(drop=True)
     print(f"{model_demand.sum()=}")
     # add non heating related residential demand (TWh)
-    non_heating_el_demand = non_heating_residential_el_demand(province, 2020) 
-    non_heating_el_demand_per_hour = non_heating_el_demand*1e6/8760 # TWh -> MWh, to equal amount per hour
+    non_heating_el_demand = non_heating_residential_el_demand(province, 2020)
+    non_heating_el_demand_per_hour = (
+        non_heating_el_demand * 1e6 / 8760
+    )  # TWh -> MWh, to equal amount per hour
     model_demand += non_heating_el_demand_per_hour
     print(f"{model_demand.sum()=}")
 
@@ -209,7 +213,7 @@ start_atts = {
 }
 
 DEFAULT_MODES_AND_YEARS = {
-    "Electric furnace": {"end_att": 0.45, "at_year": 2025}, #"Electric furnace": {"end_att": 0.40, "at_year": 2030},
+    "Electric furnace": {"end_att": 0.45, "at_year": 2025},
     "Gas furnace": {"end_att": 0.45, "at_year": 2030},
     "Heat pump": {"end_att": 0.25, "at_year": 2030},
     "Oil furnace": {"end_att": 0.728319, "at_year": 2030},
@@ -225,11 +229,11 @@ PLUS_TRANSITION_MODES_AND_YEARS = {
 
 
 att_modes = {
-    "BAU": DEFAULT_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "CER": DEFAULT_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "CER_plus": PLUS_TRANSITION_MODES_AND_YEARS, #SLOW_TRANSITION_MODES_AND_YEARS,
-    "Rapid": DEFAULT_MODES_AND_YEARS, #MODERATE_MODES_AND_YEARS,
-    "Rapid_plus": PLUS_TRANSITION_MODES_AND_YEARS, #MODERATE_MODES_AND_YEARS,
+    "BAU": DEFAULT_MODES_AND_YEARS,  # SLOW_TRANSITION_MODES_AND_YEARS,
+    "CER": DEFAULT_MODES_AND_YEARS,  # SLOW_TRANSITION_MODES_AND_YEARS,
+    "CER_plus": PLUS_TRANSITION_MODES_AND_YEARS,  # SLOW_TRANSITION_MODES_AND_YEARS,
+    "Rapid": DEFAULT_MODES_AND_YEARS,  # MODERATE_MODES_AND_YEARS,
+    "Rapid_plus": PLUS_TRANSITION_MODES_AND_YEARS,  # MODERATE_MODES_AND_YEARS,
 }
 
 fossil_ban_years = {
@@ -241,7 +245,7 @@ fossil_ban_years = {
 }
 
 if __name__ == "__main__":
-    print("Mode distributions:",att_modes)
+    print("Mode distributions:", att_modes)
     if len(sys.argv) > 1:
         scen_name = sys.argv[1]
     else:
@@ -272,7 +276,7 @@ if __name__ == "__main__":
     p_mode = 0.65  # result of fit
     province = "Ontario"
     batch_parameters = {
-        "N": [1500],
+        "N": [500],
         "province": [province],
         "random_seed": list(range(42, 48)),
         "n_segregation_steps": [40],
@@ -286,34 +290,36 @@ if __name__ == "__main__":
     }
 
     fuel_price_path = "abetam/data/canada/merged_fuel_prices.csv"
-    merged_fuel_prices = pd.read_csv(fuel_price_path).set_index(["Type of fuel", "Year", "GEO"])
-
+    merged_fuel_prices = (
+        pd.read_csv(fuel_price_path)
+        .set_index(["Type of fuel", "Year", "GEO"])
+        .sort_index()
+    )
 
     if carbon_tax_mod[scen_name] != 1:
         new_CT = CT * carbon_tax_mod[scen_name]
         update_prices = partial(update_price_w_new_CT, new_CT=new_CT)
-        merged_fuel_prices["Price (ct/kWh)"] = merged_fuel_prices.reset_index().apply(update_prices, axis=1).values
-        merged_fuel_prices.reset_index().set_index(["GEO","Type of fuel", "Year"]).to_csv(
-            fuel_price_path
+        merged_fuel_prices["Price (ct/kWh)"] = (
+            merged_fuel_prices.reset_index().apply(update_prices, axis=1).values
         )
+        merged_fuel_prices.reset_index().set_index(
+            ["GEO", "Type of fuel", "Year"]
+        ).to_csv(fuel_price_path)
 
     for i in range(2):
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
-            prices = pd.read_csv(
-                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv"
+            non_copper_years = list(
+                set(range(2020, 2051)).difference(range(2020, 2051, 5))
             )
-            drop_rows = (
-                (prices["GEO"] == province)
-                & (prices["Year"] > 2020)
-                & (prices["Type of fuel"] == "Electricity")
+            merged_fuel_prices.loc[("Electricity", non_copper_years, "Ontario"), :] = (
+                pd.NA
+            )  # the reset and set index are only for a legible diff
+            merged_fuel_prices.dropna().reset_index().set_index(
+                ["GEO", "Type of fuel", "Year"]
+            ).to_csv(
+                fuel_price_path,
             )
-            prices.loc[~drop_rows, :].to_csv(
-                "abetam/data/canada/residential_GNZ_end-use-prices-2023_ct_per_kWh.csv",
-                index=False,
-            )
-        # reload data module, to ensure price updates are reloaded
-        importlib.import_module("data.canada")
 
         print(f"Iteration {i}, running ABM...")
         batch_result = BatchResult.from_parameters(
@@ -368,7 +374,7 @@ if __name__ == "__main__":
 
         ga = global_adjustment(mean_electricity_prices)
         effective_el_prices = mean_electricity_prices + ga
-        effective_el_prices = (effective_el_prices + 6.43)*1.13
+        effective_el_prices = (effective_el_prices + 6.43) * 1.13
         el_price_copper = effective_el_prices.reset_index().pivot(
             index="year", columns="province", values="ct/kWh"
         )
@@ -386,6 +392,11 @@ if __name__ == "__main__":
         # ... and merge them with the abm inputs
         for year in el_price_copper.index:
             for prov in el_price_copper.columns:
-                merged_fuel_prices.loc[("Electricity", year, prov), "Price (ct/kWh)"] = el_price_copper.loc[year, prov]
-        merged_fuel_prices.reset_index().set_index(["GEO","Type of fuel", "Year"]).to_csv(fuel_price_path)
+                merged_fuel_prices.loc[
+                    ("Electricity", year, prov), "Price (ct/kWh)"
+                ] = el_price_copper.loc[year, prov]
+        merged_fuel_prices.reset_index().set_index(
+            ["GEO", "Type of fuel", "Year"]
+        ).to_csv(fuel_price_path)
+        print(merged_fuel_prices)
     pass
