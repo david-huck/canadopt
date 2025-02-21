@@ -23,7 +23,7 @@ from abetam.scenarios import (
 from abetam.data.canada.timeseries import demand_projection
 from abetam.data.canada import end_use_prices, non_heating_residential_el_demand
 from abetam.batch import BatchResult
-from scenarios import modify_carbon_tax
+# from scenarios import modify_carbon_tax
 
 
 def spread_model_demand(model_demand_df):
@@ -372,22 +372,74 @@ if __name__ == "__main__":
         mean_electricity_prices = prices["price(CAD/MWh)"] / 10  # $/MWh -> ct/kWh
         mean_electricity_prices.name = "ct/kWh"
 
-        ga = global_adjustment(mean_electricity_prices)
-        effective_el_prices = mean_electricity_prices + ga
-        effective_el_prices = (effective_el_prices + 6.43) * 1.13
+        def apply_retail_tariff(
+            generation_cost: pd.Series,
+            province: str,
+            iteration: int,
+        ):
+            if province == "Ontario":
+                ga = global_adjustment(generation_cost)
+                ga.name = "GA"
+                generation_cost.name = "HOEP"
+                effective_el_prices = generation_cost + ga
+                effective_el_prices.name = "final price"
+                effective_el_prices = (effective_el_prices + 6.43) * 1.13
+
+                price_info = pd.concat(
+                    [generation_cost, ga, effective_el_prices], axis=1
+                )
+            elif province == "Alberta":
+                # https://www.cer-rec.gc.ca/en/data-analysis/energy-commodities/electricity/report/canadian-residential-electricity-bill/alberta.html?=undefined&wbdisable=true
+                # https://www.ucahelps.alberta.ca/
+                var_dist_charge = 1.08  # ct/kWh
+                var_trans_charge = 1.95  # ct/kWh
+                pool_rate_rider = 0.26  # ct/kWh
+                var_rate_rider = .5  # ct/kWh
+
+                # fixed charges
+                admin_fee = (5.36 + 6.190) / 2  # $/month
+                fix_dist_charge = 15.91  # $/month
+                local_access_fee = 7.32  # $/month
+
+                # avg. monthly consumption = 600 kWh
+                # https://www.epcor.com/ca/en/ab/edmonton/account/billing/understand-your-bill.html?ops=encor-customers
+                variablized_fixed_charges = (
+                    (admin_fee + fix_dist_charge + local_access_fee) / 600 * 100
+                )
+
+                effective_el_prices = (
+                    sum(
+                        var_dist_charge,
+                        var_trans_charge,
+                        pool_rate_rider,
+                        var_rate_rider,
+                        variablized_fixed_charges,
+                    )
+                    + generation_cost
+                )
+                generation_cost.name = "Generation cost (ct/kWh)"
+                effective_el_prices.name = "final price (ct/kWh)"
+                effective_el_prices = effective_el_prices * 1.05
+
+                price_info = pd.concat(
+                    [generation_cost, effective_el_prices], axis=1
+                )
+            else:
+                raise NotImplementedError(
+                    f"Retail tariff for {province=} is not implemented."
+                )
+            price_info["scenario"] = scen_name
+            price_info["iteration"] = iteration
+            print(price_info)
+            return effective_el_prices
+
+        effective_el_prices = apply_retail_tariff(
+            mean_electricity_prices, province, iteration=i
+        )
+
         el_price_copper = effective_el_prices.reset_index().pivot(
             index="year", columns="province", values="ct/kWh"
         )
-
-        ga.name = "GA"
-        mean_electricity_prices.name = "HOEP"
-        effective_el_prices.name = "final price"
-        price_info = pd.concat(
-            [mean_electricity_prices, ga, effective_el_prices], axis=1
-        )
-        price_info["scenario"] = scen_name
-        price_info["iteration"] = i
-        print(price_info)
 
         # ... and merge them with the abm inputs
         for year in el_price_copper.index:
