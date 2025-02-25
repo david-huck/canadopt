@@ -307,7 +307,7 @@ if __name__ == "__main__":
     # p_mode = 0.65  # result of fit for ontario
     p_mode = 0.75  # result of fit for alberta
     province = "Alberta"
-    peer_eff = 0.15 # for alberta, 0.2 for ontario
+    peer_eff = 0.15  # for alberta, 0.2 for ontario
     batch_parameters = {
         "N": [1500],
         "province": [province],
@@ -320,7 +320,7 @@ if __name__ == "__main__":
         "refurbishment_rate": refurbishment_rate[scen_name],
         "hp_subsidy": hp_subsidies[scen_name],
         "fossil_ban_year": fossil_ban_years[scen_name],
-        "peer_effect_weight": [peer_eff]
+        "peer_effect_weight": [peer_eff],
     }
 
     fuel_price_path = "abetam/data/canada/merged_fuel_prices.csv"
@@ -443,11 +443,13 @@ if __name__ == "__main__":
 
                 effective_el_prices = (
                     sum(
-                        var_dist_charge,
-                        var_trans_charge,
-                        pool_rate_rider,
-                        var_rate_rider,
-                        variablized_fixed_charges,
+                        [
+                            var_dist_charge,
+                            var_trans_charge,
+                            pool_rate_rider,
+                            var_rate_rider,
+                            variablized_fixed_charges,
+                        ]
                     )
                     + generation_cost
                 )
