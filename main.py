@@ -23,7 +23,7 @@ from abetam.scenarios import (
 from abetam.data.canada.timeseries import demand_projection
 from abetam.data.canada import end_use_prices, non_heating_residential_el_demand
 from abetam.batch import BatchResult
-# from scenarios import modify_carbon_tax
+from scenarios import modify_carbon_tax
 
 
 def spread_model_demand(model_demand_df):
@@ -204,28 +204,59 @@ emission_limit = {
     "Rapid_plus": True,
 }
 
+# ontario
+# start_atts = {
+#     "Electric furnace": 0.283833,
+#     "Gas furnace": 0.653435,
+#     "Heat pump": 0.050000,
+#     "Oil furnace": 0.728319,
+#     "Biomass furnace": 0.514116,
+# }
+
+# alberta
 start_atts = {
-    "Electric furnace": 0.283833,
-    "Gas furnace": 0.653435,
-    "Heat pump": 0.050000,
-    "Oil furnace": 0.728319,
-    "Biomass furnace": 0.514116,
+    "Electric furnace": 0.812,
+    "Gas furnace": 0.05,
+    "Heat pump": 0.0954,
+    "Oil furnace": 0.798,
+    "Biomass furnace": 0.509,
 }
 
+
+# ontario
+# DEFAULT_MODES_AND_YEARS = {
+#     "Electric furnace": {"end_att": 0.45, "at_year": 2025},
+#     "Gas furnace": {"end_att": 0.45, "at_year": 2030},
+#     "Heat pump": {"end_att": 0.25, "at_year": 2030},
+#     "Oil furnace": {"end_att": 0.728319, "at_year": 2030},
+#     "Biomass furnace": {"end_att": 0.514116, "at_year": 2030},
+# }
+
+# alberta
 DEFAULT_MODES_AND_YEARS = {
-    "Electric furnace": {"end_att": 0.45, "at_year": 2025},
-    "Gas furnace": {"end_att": 0.45, "at_year": 2030},
-    "Heat pump": {"end_att": 0.25, "at_year": 2030},
-    "Oil furnace": {"end_att": 0.728319, "at_year": 2030},
-    "Biomass furnace": {"end_att": 0.514116, "at_year": 2030},
+    "Electric furnace": {"end_att": 0.81, "at_year": 2025},
+    "Gas furnace": {"end_att": 0.05, "at_year": 2030},
+    "Heat pump": {"end_att": 0.29, "at_year": 2030},
+    "Oil furnace": {"end_att": 0.80, "at_year": 2030},
+    "Biomass furnace": {"end_att": 0.51, "at_year": 2030},
 }
+
 PLUS_TRANSITION_MODES_AND_YEARS = {
-    "Electric furnace": {"end_att": 0.383833, "at_year": 2030},
-    "Gas furnace": {"end_att": 0.45, "at_year": 2030},
+    "Electric furnace": {"end_att": 0.81, "at_year": 2030},
+    "Gas furnace": {"end_att": 0.05, "at_year": 2030},
     "Heat pump": {"end_att": 0.35, "at_year": 2030},
-    "Oil furnace": {"end_att": 0.728319, "at_year": 2030},
-    "Biomass furnace": {"end_att": 0.514116, "at_year": 2030},
+    "Oil furnace": {"end_att": 0.80, "at_year": 2030},
+    "Biomass furnace": {"end_att": 0.51, "at_year": 2030},
 }
+
+# ontario
+# PLUS_TRANSITION_MODES_AND_YEARS = {
+#     "Electric furnace": {"end_att": 0.383833, "at_year": 2030},
+#     "Gas furnace": {"end_att": 0.45, "at_year": 2030},
+#     "Heat pump": {"end_att": 0.35, "at_year": 2030},
+#     "Oil furnace": {"end_att": 0.728319, "at_year": 2030},
+#     "Biomass furnace": {"end_att": 0.514116, "at_year": 2030},
+# }
 
 
 att_modes = {
@@ -273,10 +304,12 @@ if __name__ == "__main__":
     tech_attitude_scenario = generate_scenario_attitudes(
         MODES_2020, att_modes[scen_name]
     )
-    p_mode = 0.65  # result of fit
-    province = "Ontario"
+    # p_mode = 0.65  # result of fit for ontario
+    p_mode = 0.75  # result of fit for alberta
+    province = "Alberta"
+    peer_eff = 0.15 # for alberta, 0.2 for ontario
     batch_parameters = {
-        "N": [500],
+        "N": [1500],
         "province": [province],
         "random_seed": list(range(42, 48)),
         "n_segregation_steps": [40],
@@ -287,6 +320,7 @@ if __name__ == "__main__":
         "refurbishment_rate": refurbishment_rate[scen_name],
         "hp_subsidy": hp_subsidies[scen_name],
         "fossil_ban_year": fossil_ban_years[scen_name],
+        "peer_effect_weight": [peer_eff]
     }
 
     fuel_price_path = "abetam/data/canada/merged_fuel_prices.csv"
@@ -306,7 +340,7 @@ if __name__ == "__main__":
             ["GEO", "Type of fuel", "Year"]
         ).to_csv(fuel_price_path)
 
-    for i in range(2):
+    for i in range(4):
         if i:
             # remove projected prices after first iteration, to only use the COPPER-determined prices
             non_copper_years = list(
@@ -394,7 +428,7 @@ if __name__ == "__main__":
                 var_dist_charge = 1.08  # ct/kWh
                 var_trans_charge = 1.95  # ct/kWh
                 pool_rate_rider = 0.26  # ct/kWh
-                var_rate_rider = .5  # ct/kWh
+                var_rate_rider = 0.5  # ct/kWh
 
                 # fixed charges
                 admin_fee = (5.36 + 6.190) / 2  # $/month
@@ -421,9 +455,7 @@ if __name__ == "__main__":
                 effective_el_prices.name = "final price (ct/kWh)"
                 effective_el_prices = effective_el_prices * 1.05
 
-                price_info = pd.concat(
-                    [generation_cost, effective_el_prices], axis=1
-                )
+                price_info = pd.concat([generation_cost, effective_el_prices], axis=1)
             else:
                 raise NotImplementedError(
                     f"Retail tariff for {province=} is not implemented."
